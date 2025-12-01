@@ -25,42 +25,43 @@ Unlike [PufferLib](https://github.com/PufferAI/PufferLib) which wraps existing G
 | MountainCar | 2 | Discrete(3) | Sparse reward climbing | -1 per step |
 | Pendulum | 3 | Continuous(1) | Swing-up control | Cost minimization |
 
+All environments provide Gymnasium-compatible `observation_space` and `action_space` properties for easy integration with RL frameworks.
+
 ## Performance
 
 ```
-CartPole Quick Benchmark (4096 envs)
+CartPole Benchmark (4096 envs)
 ============================================================
-Pavlov...     100.67M steps/sec
+Pavlov...      97.54M steps/sec
 Gymnasium...    0.16M steps/sec
 
-Speedup: 618.7x faster than Gymnasium
+Speedup: ~600x faster than Gymnasium
 ```
 
 ## Requirements
 
 - Python 3.10+
-- Rust nightly (for SIMD `portable_simd` feature)
-- Poetry
 
 ## Installation
 
-### 1. Install Rust
+### From PyPI (Recommended)
 
 ```bash
+pip install pavlov
+```
+
+### From Source (Development)
+
+Requires Rust nightly and Poetry:
+
+```bash
+# 1. Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
 
-The project uses `rust-toolchain.toml` to automatically select nightly.
-
-### 2. Install Poetry
-
-```bash
+# 2. Install Poetry
 curl -sSL https://install.python-poetry.org | python3 -
-```
 
-### 3. Setup Project
-
-```bash
+# 3. Setup project
 poetry install
 poetry run maturin develop --release
 ```
@@ -116,11 +117,11 @@ for step in range(10000):
 ```python
 from pavlov.utils import Logger
 
-logger = Logger(csv_path="training.csv")
-for step in range(1000):
-    # ... training loop ...
-    logger.log(steps=num_envs, reward=mean_reward, length=mean_length)
-logger.close()
+# Context manager automatically handles cleanup
+with Logger(csv_path="training.csv") as logger:
+    for step in range(1000):
+        # ... training loop ...
+        logger.log(steps=num_envs, reward=mean_reward, length=mean_length)
 ```
 
 ## Migration from v0.1.x
@@ -142,10 +143,10 @@ The old import style will continue to work until v0.4.0, but will emit deprecati
 
 ### Quick Benchmark
 
-Compare Pavlov vs Gymnasium at 4096 environments:
+Compare Pavlov at 4096 environments:
 
 ```bash
-poetry run python benches/cartpole_benchmark.py --fast
+poetry run python benches/cartpole_benchmark.py
 ```
 
 ### Full Benchmark
@@ -153,7 +154,7 @@ poetry run python benches/cartpole_benchmark.py --fast
 Test across multiple environment counts (1, 16, 256, 1024, 4096):
 
 ```bash
-poetry run python benches/cartpole_benchmark.py
+poetry run python benches/cartpole_benchmark.py --all
 ```
 
 ## Architecture
