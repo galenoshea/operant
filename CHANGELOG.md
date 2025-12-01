@@ -5,6 +5,31 @@ All notable changes to Pavlov will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-12-01
+
+### Added
+- Gymnasium-compatible `observation_space` and `action_space` properties
+- Context manager support for Logger (`with Logger() as log:`)
+- Comprehensive input validation for all environment methods
+- Error handling tests and Logger tests
+
+### Changed
+- All environment constructors now validate `num_envs > 0`
+- All `step()` methods validate action array shape and dtype
+- All methods return proper Python exceptions instead of panicking
+- Logger validates `print_interval` and `newline_interval` parameters
+
+### Fixed
+- Removed unsafe `.unwrap()` calls that could panic on invalid input
+- Added proper error propagation with descriptive messages
+- Logger file cleanup on exceptions
+- API consistency across all three environments
+
+### Security
+- Replaced panic-prone unwrap() with proper error handling
+- Added bounds checking for all array operations
+- Improved safety documentation for remaining unsafe blocks
+
 ## [0.2.0] - 2025-12-01
 
 ### Breaking Changes

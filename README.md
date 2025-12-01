@@ -1,5 +1,8 @@
 # Pavlov
 
+[![PyPI version](https://badge.fury.io/py/pavlov.svg)](https://badge.fury.io/py/pavlov)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
 High-performance SIMD-optimized Gymnasium-compatible reinforcement learning environments in Rust with Python bindings.
 
 **~600x faster than Gymnasium** for vectorized environments.

@@ -4,11 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "pavlov"
-version = "0.2.0"
+version = "0.3.0"
 description = "High-performance SIMD-optimized RL environments in Rust"
 readme = "README.md"
 license = { text = "MIT" }
-authors = [{ name = "goshea" }]
+authors = [{ name = "goshea", email = "goshea@me.com" }]
 requires-python = ">=3.10"
 keywords = ["reinforcement-learning", "rl", "simd", "gymnasium", "environments"]
 classifiers = [
