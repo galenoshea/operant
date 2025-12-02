@@ -1,4 +1,4 @@
-"""Pavlov: High-performance RL environments with Rust backend.
+"""Operant: High-performance RL environments with Rust backend.
 
 This package provides fast, SIMD-optimized vectorized reinforcement learning
 environments implemented in Rust with Python bindings.
@@ -7,7 +7,7 @@ environments implemented in Rust with Python bindings.
 
 ```python
 import numpy as np
-from pavlov.envs import CartPoleVecEnv
+from operant.envs import CartPoleVecEnv
 
 # Create 4096 parallel environments
 env = CartPoleVecEnv(num_envs=4096)
@@ -21,24 +21,24 @@ for step in range(1000):
 
 ## Modules
 
-- `pavlov.envs`: High-performance Rust-backed environments
-- `pavlov.utils`: Training utilities (Logger, etc.)
+- `operant.envs`: High-performance Rust-backed environments
+- `operant.utils`: Training utilities (Logger, etc.)
 """
 
 import sys
 import warnings
 from typing import Any
 
-# Import Rust extension to register pavlov.envs in sys.modules
-from . import pavlov as _pavlov_ext
+# Import Rust extension to register operant.envs in sys.modules
+from . import operant as _operant_ext
 
 # Create clean envs module facade that removes Py prefix
 class _EnvsModule:
     """Environment submodule with clean class names (no Py prefix)."""
 
     def __init__(self):
-        # Access the Rust-created pavlov.envs module
-        _rust_envs = sys.modules['pavlov.envs']
+        # Access the Rust-created operant.envs module
+        _rust_envs = sys.modules['operant.envs']
         # Remove Py prefix for clean API
         self.CartPoleVecEnv = _rust_envs.PyCartPoleVecEnv
         self.MountainCarVecEnv = _rust_envs.PyMountainCarVecEnv
@@ -62,19 +62,19 @@ class _UtilsModule:
 envs = _EnvsModule()
 utils = _UtilsModule()
 
-# Override the Rust-created pavlov.envs with our facade that has clean names
-sys.modules['pavlov.envs'] = envs
+# Override the Rust-created operant.envs with our facade that has clean names
+sys.modules['operant.envs'] = envs
 # Register utils as a proper module
-sys.modules['pavlov.utils'] = utils
+sys.modules['operant.utils'] = utils
 
 # Backwards compatibility - deprecated root-level imports
-from .pavlov import PyCartPoleVecEnv, PyMountainCarVecEnv, PyPendulumVecEnv
+from .operant import PyCartPoleVecEnv, PyMountainCarVecEnv, PyPendulumVecEnv
 from .logger import Logger
 
 def _deprecated_import_warning(old_name: str, new_import: str) -> None:
     """Emit deprecation warning for old import patterns."""
     warnings.warn(
-        f"Importing '{old_name}' from 'pavlov' is deprecated. "
+        f"Importing '{old_name}' from 'operant' is deprecated. "
         f"Use '{new_import}' instead. "
         f"Old imports will be removed in v0.4.0.",
         DeprecationWarning,
@@ -84,18 +84,18 @@ def _deprecated_import_warning(old_name: str, new_import: str) -> None:
 # Override __getattr__ to warn on old usage patterns
 def __getattr__(name: str) -> Any:
     if name == "PyCartPoleVecEnv":
-        _deprecated_import_warning(name, "from pavlov.envs import CartPoleVecEnv")
+        _deprecated_import_warning(name, "from operant.envs import CartPoleVecEnv")
         return PyCartPoleVecEnv
     elif name == "PyMountainCarVecEnv":
-        _deprecated_import_warning(name, "from pavlov.envs import MountainCarVecEnv")
+        _deprecated_import_warning(name, "from operant.envs import MountainCarVecEnv")
         return PyMountainCarVecEnv
     elif name == "PyPendulumVecEnv":
-        _deprecated_import_warning(name, "from pavlov.envs import PendulumVecEnv")
+        _deprecated_import_warning(name, "from operant.envs import PendulumVecEnv")
         return PyPendulumVecEnv
     elif name == "Logger":
-        _deprecated_import_warning(name, "from pavlov.utils import Logger")
+        _deprecated_import_warning(name, "from operant.utils import Logger")
         return Logger
-    raise AttributeError(f"module 'pavlov' has no attribute '{name}'")
+    raise AttributeError(f"module 'operant' has no attribute '{name}'")
 
 __all__ = [
     "envs",

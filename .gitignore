@@ -50,3 +50,17 @@ htmlcov/
 
 # Maturin
 *.whl
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# Certificates and keys
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Secrets directory
+secrets/

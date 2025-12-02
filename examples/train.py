@@ -1,4 +1,4 @@
-"""Simple training loop example using Pavlov.
+"""Simple training loop example using Operant.
 
 Demonstrates the basic API for running vectorized environments with inline logging.
 
@@ -7,7 +7,7 @@ Usage:
 """
 
 import numpy as np
-from pavlov import PyCartPoleVecEnv, Logger
+from operant import PyCartPoleVecEnv, Logger
 
 
 def main():

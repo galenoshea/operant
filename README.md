@@ -1,6 +1,6 @@
-# Pavlov
+# Operant
 
-[![PyPI version](https://badge.fury.io/py/pavlov.svg)](https://badge.fury.io/py/pavlov)
+[![PyPI version](https://badge.fury.io/py/operant.svg)](https://badge.fury.io/py/operant)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 High-performance SIMD-optimized Gymnasium-compatible reinforcement learning environments in Rust with Python bindings.
@@ -9,13 +9,13 @@ High-performance SIMD-optimized Gymnasium-compatible reinforcement learning envi
 
 ## What is This?
 
-Pavlov provides **native Rust implementations** of Gymnasium environments with:
+Operant provides **native Rust implementations** of Gymnasium environments with:
 - **SIMD vectorization**: Process 8 environments simultaneously per instruction (AVX2)
 - **Struct-of-Arrays layout**: Cache-friendly memory access patterns
 - **Zero-copy numpy**: Direct array access without Python overhead
 - **Gymnasium compatibility**: Drop-in replacement for standard Gym environments
 
-Unlike [PufferLib](https://github.com/PufferAI/PufferLib) which wraps existing Gymnasium environments for vectorization, Pavlov implements environments **natively in Rust** for maximum performance.
+Unlike [PufferLib](https://github.com/PufferAI/PufferLib) which wraps existing Gymnasium environments for vectorization, Operant implements environments **natively in Rust** for maximum performance.
 
 ## Supported Environments
 
@@ -32,7 +32,7 @@ All environments provide Gymnasium-compatible `observation_space` and `action_sp
 ```
 CartPole Benchmark (4096 envs)
 ============================================================
-Pavlov...      97.54M steps/sec
+Operant...     97.54M steps/sec
 Gymnasium...    0.16M steps/sec
 
 Speedup: ~600x faster than Gymnasium
@@ -47,7 +47,7 @@ Speedup: ~600x faster than Gymnasium
 ### From PyPI (Recommended)
 
 ```bash
-pip install pavlov
+pip install operant
 ```
 
 ### From Source (Development)
@@ -72,7 +72,7 @@ poetry run maturin develop --release
 
 ```python
 import numpy as np
-from pavlov.envs import CartPoleVecEnv
+from operant.envs import CartPoleVecEnv
 
 # Create 4096 parallel environments
 num_envs = 4096
@@ -87,7 +87,7 @@ for step in range(10000):
 ### MountainCar (Discrete Actions)
 
 ```python
-from pavlov.envs import MountainCarVecEnv
+from operant.envs import MountainCarVecEnv
 
 num_envs = 4096
 env = MountainCarVecEnv(num_envs)
@@ -101,7 +101,7 @@ for step in range(10000):
 ### Pendulum (Continuous Actions)
 
 ```python
-from pavlov.envs import PendulumVecEnv
+from operant.envs import PendulumVecEnv
 
 num_envs = 4096
 env = PendulumVecEnv(num_envs)
@@ -115,7 +115,7 @@ for step in range(10000):
 ### Logging and Metrics
 
 ```python
-from pavlov.utils import Logger
+from operant.utils import Logger
 
 # Context manager automatically handles cleanup
 with Logger(csv_path="training.csv") as logger:
@@ -128,13 +128,13 @@ with Logger(csv_path="training.csv") as logger:
 
 **Old imports (deprecated)**:
 ```python
-from pavlov import PyCartPoleVecEnv, Logger
+from operant import PyCartPoleVecEnv, Logger
 ```
 
 **New imports (recommended)**:
 ```python
-from pavlov.envs import CartPoleVecEnv
-from pavlov.utils import Logger
+from operant.envs import CartPoleVecEnv
+from operant.utils import Logger
 ```
 
 The old import style will continue to work until v0.4.0, but will emit deprecation warnings.
@@ -143,7 +143,7 @@ The old import style will continue to work until v0.4.0, but will emit deprecati
 
 ### Quick Benchmark
 
-Compare Pavlov at 4096 environments:
+Compare Operant at 4096 environments:
 
 ```bash
 poetry run python benches/cartpole_benchmark.py
@@ -159,7 +159,7 @@ poetry run python benches/cartpole_benchmark.py --all
 
 ## Architecture
 
-Pavlov uses a Struct-of-Arrays (SoA) memory layout with SIMD vectorization:
+Operant uses a Struct-of-Arrays (SoA) memory layout with SIMD vectorization:
 
 - **f32x8 SIMD**: Processes 8 environments simultaneously per instruction
 - **SoA Layout**: Cache-friendly memory access patterns

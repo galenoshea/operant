@@ -1,10 +1,10 @@
 [package]
-name = "pavlov-core"
+name = "operant-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Core traits and vectorization for Pavlov RL library"
+description = "Core traits and vectorization for Operant RL library"
 
 [dependencies]
 rand = { workspace = true }

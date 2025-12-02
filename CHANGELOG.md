@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Pavlov will be documented in this file.
+All notable changes to Operant will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -40,26 +40,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `pavlov.envs` submodule for environment classes (CartPoleVecEnv, MountainCarVecEnv, PendulumVecEnv)
-- `pavlov.utils` submodule for utilities (Logger)
+- `operant.envs` submodule for environment classes (CartPoleVecEnv, MountainCarVecEnv, PendulumVecEnv)
+- `operant.utils` submodule for utilities (Logger)
 - Migration guide in README.md
 - Comprehensive CHANGELOG.md
 
 ### Changed
 
-- **Recommended import pattern**: `from pavlov.envs import CartPoleVecEnv` (was: `from pavlov import PyCartPoleVecEnv`)
+- **Recommended import pattern**: `from operant.envs import CartPoleVecEnv` (was: `from operant import PyCartPoleVecEnv`)
 - Cleaner API without `Py` prefix for better Python ergonomics
 - Updated all examples and documentation to use new import patterns
 
 ### Deprecated
 
-- Root-level imports: `from pavlov import PyCartPoleVecEnv`
-  - Use instead: `from pavlov.envs import CartPoleVecEnv`
+- Root-level imports: `from operant import PyCartPoleVecEnv`
+  - Use instead: `from operant.envs import CartPoleVecEnv`
   - Old imports will be removed in v0.4.0
 
 ### Technical Details
 
-- Rust PyO3 submodule registration for `pavlov.envs`
+- Rust PyO3 submodule registration for `operant.envs`
 - Python facade layer for clean class name exports (removes `Py` prefix)
 - All tests and benchmarks updated to new API
 - Backwards compatibility maintained for smooth migration

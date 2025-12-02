@@ -19,7 +19,7 @@ const X_THRESHOLD: f32 = 2.4;
 const THETA_THRESHOLD: f32 = 12.0 * std::f32::consts::PI / 180.0;
 const MAX_STEPS: u32 = 200;
 
-use pavlov_core::LogData;
+use operant_core::LogData;
 use crate::shared::rng::*;
 use rand::SeedableRng;
 
@@ -441,7 +441,7 @@ impl CartPole {
     }
 }
 
-impl pavlov_core::VecEnvironment for CartPole {
+impl operant_core::VecEnvironment for CartPole {
     #[inline]
     fn num_envs(&self) -> usize {
         self.num_envs

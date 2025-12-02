@@ -18,7 +18,7 @@ const GOAL_POSITION: f32 = 0.5;
 const MAX_SPEED: f32 = 0.07;
 const MAX_STEPS: u32 = 200;
 
-use pavlov_core::LogData;
+use operant_core::LogData;
 use crate::shared::rng::*;
 use rand::SeedableRng;
 
@@ -333,7 +333,7 @@ impl MountainCar {
     }
 }
 
-impl pavlov_core::VecEnvironment for MountainCar {
+impl operant_core::VecEnvironment for MountainCar {
     fn num_envs(&self) -> usize {
         self.num_envs
     }
@@ -378,7 +378,7 @@ impl pavlov_core::VecEnvironment for MountainCar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pavlov_core::VecEnvironment;
+    use operant_core::VecEnvironment;
 
     #[test]
     fn test_creation() {

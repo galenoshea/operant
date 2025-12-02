@@ -1,11 +1,11 @@
-"""Benchmark comparing Gymnasium and Pavlov CartPole performance.
+"""Benchmark comparing Gymnasium and Operant CartPole performance.
 
 This benchmark measures steps per second (SPS) for vectorized environments
 at various parallelization levels.
 
 Usage:
-    python benches/cartpole_benchmark.py          # Quick Pavlov benchmark (4096 envs)
-    python benches/cartpole_benchmark.py --all    # Full benchmark suite (Gymnasium vs Pavlov)
+    python benches/cartpole_benchmark.py          # Quick Operant benchmark (4096 envs)
+    python benches/cartpole_benchmark.py --all    # Full benchmark suite (Gymnasium vs Operant)
 """
 
 import argparse
@@ -13,7 +13,7 @@ import time
 import numpy as np
 import gymnasium as gym
 
-from pavlov.envs import CartPoleVecEnv
+from operant.envs import CartPoleVecEnv
 
 
 def benchmark_gymnasium(num_envs: int, num_steps: int, num_trials: int = 5) -> dict:
@@ -57,8 +57,8 @@ def benchmark_gymnasium(num_envs: int, num_steps: int, num_trials: int = 5) -> d
 
 
 
-def benchmark_pavlov(num_envs: int, num_steps: int, num_trials: int = 5) -> dict:
-    """Benchmark Pavlov Rust CartPole."""
+def benchmark_operant(num_envs: int, num_steps: int, num_trials: int = 5) -> dict:
+    """Benchmark Operant Rust CartPole."""
     results = []
 
     for trial in range(num_trials):
@@ -96,7 +96,7 @@ def benchmark_pavlov(num_envs: int, num_steps: int, num_trials: int = 5) -> dict
 def run_benchmark():
     """Run full benchmark suite."""
     print("=" * 80)
-    print("CartPole Benchmark: Gymnasium vs Pavlov (Rust)")
+    print("CartPole Benchmark: Gymnasium vs Operant (Rust)")
     print("=" * 80)
     print()
 
@@ -127,13 +127,13 @@ def run_benchmark():
         gym_results = benchmark_gymnasium(num_envs, num_steps, num_trials)
         print(f"{gym_results['mean_sps']:>12,.0f} SPS (+/- {gym_results['std_sps']:,.0f})")
 
-        # Pavlov benchmark
-        print(f"  Pavlov (Rust)...", end="", flush=True)
-        pav_results = benchmark_pavlov(num_envs, num_steps, num_trials)
-        print(f"{pav_results['mean_sps']:>12,.0f} SPS (+/- {pav_results['std_sps']:,.0f})")
+        # Operant benchmark
+        print(f"  Operant (Rust)...", end="", flush=True)
+        op_results = benchmark_operant(num_envs, num_steps, num_trials)
+        print(f"{op_results['mean_sps']:>12,.0f} SPS (+/- {op_results['std_sps']:,.0f})")
 
         # Calculate speedups
-        speedup_vs_gym = pav_results['mean_sps'] / gym_results['mean_sps']
+        speedup_vs_gym = op_results['mean_sps'] / gym_results['mean_sps']
         print(f"  Speedup vs Gym:  {speedup_vs_gym:>11.1f}x")
         print()
 
@@ -141,7 +141,7 @@ def run_benchmark():
             "num_envs": num_envs,
             "num_steps": num_steps,
             "gymnasium": gym_results,
-            "pavlov": pav_results,
+            "operant": op_results,
             "speedup_vs_gym": speedup_vs_gym,
         })
 
@@ -151,10 +151,10 @@ def run_benchmark():
     print("=" * 80)
     print()
 
-    print(f"{'Envs':>6} | {'Gymnasium':>14} | {'Pavlov':>14} | {'Speedup':>8}")
+    print(f"{'Envs':>6} | {'Gymnasium':>14} | {'Operant':>14} | {'Speedup':>8}")
     print("-" * 50)
     for r in all_results:
-        print(f"{r['num_envs']:>6} | {r['gymnasium']['mean_sps']:>14,.0f} | {r['pavlov']['mean_sps']:>14,.0f} | {r['speedup_vs_gym']:>7.1f}x")
+        print(f"{r['num_envs']:>6} | {r['gymnasium']['mean_sps']:>14,.0f} | {r['operant']['mean_sps']:>14,.0f} | {r['speedup_vs_gym']:>7.1f}x")
 
     print()
 
@@ -166,20 +166,20 @@ def run_benchmark():
 
 
 def run_fast_benchmark():
-    """Quick benchmark at 4096 envs for Pavlov only."""
+    """Quick benchmark at 4096 envs for Operant only."""
     num_envs = 4096
     num_steps = 2000
     num_trials = 3
 
     print("=" * 60)
-    print("CartPole Benchmark - Pavlov (4096 envs)")
+    print("CartPole Benchmark - Operant (4096 envs)")
     print("=" * 60)
     print()
 
-    # Pavlov
-    print("Pavlov...     ", end="", flush=True)
-    pav_results = benchmark_pavlov(num_envs, num_steps, num_trials)
-    print(f"{pav_results['mean_sps']/1e6:>6.2f}M steps/sec")
+    # Operant
+    print("Operant...     ", end="", flush=True)
+    op_results = benchmark_operant(num_envs, num_steps, num_trials)
+    print(f"{op_results['mean_sps']/1e6:>6.2f}M steps/sec")
 
     print()
     print(f"Total steps: {num_steps * num_envs * num_trials:,}")

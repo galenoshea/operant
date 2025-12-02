@@ -1,10 +1,10 @@
-//! Python bindings for Pavlov RL environments.
+//! Python bindings for Operant RL environments.
 //!
 //! Provides PyO3-based bindings with zero-copy numpy array support.
 
 use numpy::{PyArray1, PyArray2, PyArrayMethods};
-use pavlov_core::VecEnvironment;
-use pavlov_envs::{CartPole, MountainCar, Pendulum};
+use operant_core::VecEnvironment;
+use operant_envs::{CartPole, MountainCar, Pendulum};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -678,7 +678,7 @@ impl PyPendulumVecEnv {
     }
 }
 
-/// Register pavlov.envs submodule with environment classes.
+/// Register operant.envs submodule with environment classes.
 fn register_envs_module(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = parent.py();
     let envs_mod = PyModule::new(py, "envs")?;
@@ -694,14 +694,14 @@ fn register_envs_module(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     // Add to sys.modules for proper Python import
     py.import("sys")?
         .getattr("modules")?
-        .set_item("pavlov.envs", envs_mod)?;
+        .set_item("operant.envs", envs_mod)?;
 
     Ok(())
 }
 
-/// Pavlov Python module.
+/// Operant Python module.
 #[pymodule]
-fn pavlov(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn operant(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register envs submodule
     register_envs_module(m)?;
 

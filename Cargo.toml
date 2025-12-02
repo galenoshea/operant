@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/pavlov-core", "crates/pavlov-envs", "crates/pavlov-python"]
+members = ["crates/operant-core", "crates/operant-envs", "crates/operant-python"]
 
 [workspace.package]
 version = "0.3.0"
@@ -9,8 +9,8 @@ license = "MIT"
 authors = ["goshea"]
 
 [workspace.dependencies]
-pavlov-core = { path = "crates/pavlov-core" }
-pavlov-envs = { path = "crates/pavlov-envs" }
+operant-core = { path = "crates/operant-core" }
+operant-envs = { path = "crates/operant-envs" }
 rand = "0.8"
 rand_xoshiro = "0.6"
 pyo3 = { version = "0.27", features = ["extension-module"] }

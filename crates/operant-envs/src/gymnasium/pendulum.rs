@@ -18,7 +18,7 @@ const M: f32 = 1.0;
 const L: f32 = 1.0;
 const MAX_STEPS: u32 = 200;
 
-use pavlov_core::LogData;
+use operant_core::LogData;
 use crate::shared::rng::*;
 use rand::SeedableRng;
 
@@ -364,7 +364,7 @@ impl Pendulum {
     }
 }
 
-impl pavlov_core::VecEnvironment for Pendulum {
+impl operant_core::VecEnvironment for Pendulum {
     fn num_envs(&self) -> usize {
         self.num_envs
     }
@@ -431,7 +431,7 @@ fn simd_angle_normalize(angle: f32x8) -> f32x8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pavlov_core::VecEnvironment;
+    use operant_core::VecEnvironment;
 
     #[test]
     fn test_creation() {

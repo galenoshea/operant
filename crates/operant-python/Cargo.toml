@@ -1,21 +1,21 @@
 [package]
-name = "pavlov-python"
+name = "operant-python"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Python bindings for Pavlov RL library"
+description = "Python bindings for Operant RL library"
 
 [lib]
-name = "pavlov"
+name = "operant"
 crate-type = ["cdylib"]
 
 [features]
 default = ["simd"]
-simd = ["pavlov-envs/simd"]  # Pass through to pavlov-envs
+simd = ["operant-envs/simd"]  # Pass through to operant-envs
 
 [dependencies]
-pavlov-core = { workspace = true }
-pavlov-envs = { workspace = true }
+operant-core = { workspace = true }
+operant-envs = { workspace = true }
 pyo3 = { workspace = true }
 numpy = { workspace = true }
