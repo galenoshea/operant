@@ -300,4 +300,4 @@ __all__ = [
     "PyMountainCarVecEnv",
     "PyPendulumVecEnv",
 ]
-__version__ = "0.3.2"
+__version__ = "0.3.1"

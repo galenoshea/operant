@@ -59,11 +59,13 @@ jobs:
 
       - name: Publish operant-envs (dry run)
         if: ${{ github.event.inputs.dry_run == 'true' }}
-        run: cargo publish -p operant-envs --dry-run
+        # --no-verify skips dependency check (operant-core not on crates.io yet)
+        run: cargo publish -p operant-envs --dry-run --no-verify
 
       - name: Publish operant (dry run)
         if: ${{ github.event.inputs.dry_run == 'true' }}
-        run: cargo publish -p operant --dry-run
+        # --no-verify skips dependency check (operant-core/envs not on crates.io yet)
+        run: cargo publish -p operant --dry-run --no-verify
 
       - name: Publish operant-core
         if: ${{ github.event.inputs.dry_run != 'true' || github.event_name == 'release' }}

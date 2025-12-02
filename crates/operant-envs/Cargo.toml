@@ -17,7 +17,7 @@ simd = []          # Enable SIMD optimizations (requires nightly)
 parallel = ["rayon"]  # Enable multi-threaded parallel execution
 
 [dependencies]
-operant-core = { version = "0.3", path = "../operant-core" }
+operant-core = { version = "0.3.1", path = "../operant-core" }
 rand = { workspace = true }
 rand_xoshiro = { workspace = true }
 rayon = { workspace = true, optional = true }

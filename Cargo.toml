@@ -3,13 +3,13 @@ resolver = "2"
 members = ["crates/operant", "crates/operant-core", "crates/operant-envs", "crates/operant-python"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "MIT"
 authors = ["goshea"]
 repository = "https://github.com/galenoshea/operant"
 homepage = "https://github.com/galenoshea/operant"
-keywords = ["reinforcement-learning", "rl", "simd", "gymnasium", "environments"]
+keywords = ["reinforcement", "rl", "simd", "gymnasium", "environments"]
 categories = ["science", "simulation", "game-development"]
 
 [workspace.dependencies]

@@ -1,6 +1,7 @@
 # Operant
 
 [![PyPI version](https://badge.fury.io/py/operant.svg)](https://badge.fury.io/py/operant)
+[![Crates.io](https://img.shields.io/crates/v/operant.svg)](https://crates.io/crates/operant)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 High-performance SIMD-optimized Gymnasium-compatible reinforcement learning environments in Rust with Python bindings.
@@ -44,10 +45,16 @@ Speedup: ~600x faster than Gymnasium
 
 ## Installation
 
-### From PyPI (Recommended)
+### Python (PyPI)
 
 ```bash
 pip install operant
+```
+
+### Rust (crates.io)
+
+```bash
+cargo add operant
 ```
 
 ### From Source (Development)
@@ -68,7 +75,9 @@ poetry run maturin develop --release
 
 ## Usage
 
-### CartPole (Discrete Actions)
+### Python
+
+#### CartPole (Discrete Actions)
 
 ```python
 import numpy as np
@@ -77,39 +86,66 @@ from operant.envs import CartPoleVecEnv
 # Create 4096 parallel environments
 num_envs = 4096
 env = CartPoleVecEnv(num_envs)
-obs = env.reset(seed=42)  # Shape: (4096, 4)
+obs, info = env.reset(seed=42)  # Shape: (4096, 4)
 
 for step in range(10000):
     actions = np.random.randint(0, 2, size=num_envs, dtype=np.int32)
-    obs, rewards, terminals, truncations = env.step(actions)
+    obs, rewards, terminals, truncations, info = env.step(actions)
 ```
 
-### MountainCar (Discrete Actions)
+#### Multi-threaded Execution
+
+For heavier environments or large batch sizes, enable parallel execution:
+
+```python
+# Use 4 worker threads for parallel step execution
+env = CartPoleVecEnv(num_envs=8192, workers=4)
+```
+
+#### MountainCar (Discrete Actions)
 
 ```python
 from operant.envs import MountainCarVecEnv
 
 num_envs = 4096
 env = MountainCarVecEnv(num_envs)
-obs = env.reset(seed=42)  # Shape: (4096, 2)
+obs, info = env.reset(seed=42)  # Shape: (4096, 2)
 
 for step in range(10000):
     actions = np.random.randint(0, 3, size=num_envs, dtype=np.int32)
-    obs, rewards, terminals, truncations = env.step(actions)
+    obs, rewards, terminals, truncations, info = env.step(actions)
 ```
 
-### Pendulum (Continuous Actions)
+#### Pendulum (Continuous Actions)
 
 ```python
 from operant.envs import PendulumVecEnv
 
 num_envs = 4096
 env = PendulumVecEnv(num_envs)
-obs = env.reset(seed=42)  # Shape: (4096, 3) - [cos(θ), sin(θ), θ_dot]
+obs, info = env.reset(seed=42)  # Shape: (4096, 3) - [cos(θ), sin(θ), θ_dot]
 
 for step in range(10000):
     actions = np.random.uniform(-2.0, 2.0, size=num_envs).astype(np.float32)
-    obs, rewards, terminals, truncations = env.step(actions)
+    obs, rewards, terminals, truncations, info = env.step(actions)
+```
+
+### Rust
+
+```rust
+use operant::{CartPole, VecEnv};
+
+fn main() {
+    // Create 1024 parallel environments
+    let mut env = CartPole::new(1024);
+
+    // Reset all environments
+    let obs = env.reset();
+
+    // Step with actions
+    let actions = vec![0; 1024];
+    let (obs, rewards, terminals, truncations) = env.step(&actions);
+}
 ```
 
 ### Logging and Metrics
