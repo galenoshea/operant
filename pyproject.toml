@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "operant"
-version = "0.3.1"
+version = "0.3.3"
 description = "High-performance SIMD-optimized RL environments in Rust"
 readme = "README.md"
 license = { text = "MIT" }

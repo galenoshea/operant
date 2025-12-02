@@ -17,8 +17,8 @@ parallel = ["operant-envs/parallel"] # Enable multi-threaded parallel execution
 tui = ["dep:ratatui", "dep:crossterm", "dep:sysinfo", "dep:nvml-wrapper"]
 
 [dependencies]
-operant-core = { version = "0.3.1", path = "../operant-core" }
-operant-envs = { version = "0.3.1", path = "../operant-envs" }
+operant-core = { workspace = true }
+operant-envs = { workspace = true }
 pyo3 = { workspace = true }
 numpy = { workspace = true }
 ratatui = { workspace = true, optional = true }

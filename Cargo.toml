@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/operant", "crates/operant-core", "crates/operant-envs", "crates/operant-python"]
 
 [workspace.package]
-version = "0.3.1"
+version = "0.3.3"
 edition = "2021"
 license = "MIT"
 authors = ["goshea"]
@@ -13,8 +13,8 @@ keywords = ["reinforcement", "rl", "simd", "gymnasium", "environments"]
 categories = ["science", "simulation", "game-development"]
 
 [workspace.dependencies]
-operant-core = { path = "crates/operant-core" }
-operant-envs = { path = "crates/operant-envs" }
+operant-core = { version = "0.3.3", path = "crates/operant-core" }
+operant-envs = { version = "0.3.3", path = "crates/operant-envs" }
 rand = "0.8"
 rand_xoshiro = "0.6"
 pyo3 = { version = "0.27", features = ["extension-module"] }

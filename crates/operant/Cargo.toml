@@ -17,5 +17,5 @@ simd = ["operant-envs/simd"]
 parallel = ["operant-envs/parallel"]
 
 [dependencies]
-operant-core = { version = "0.3.1", path = "../operant-core" }
-operant-envs = { version = "0.3.1", path = "../operant-envs" }
+operant-core = { workspace = true }
+operant-envs = { workspace = true }
