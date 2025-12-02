@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "operant"
-version = "0.3.0"
+version = "0.3.1"
 description = "High-performance SIMD-optimized RL environments in Rust"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = ["numpy>=2.0"]
