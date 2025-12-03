@@ -1137,13 +1137,13 @@ fn create_percentage_y_axis(title: &'static str) -> Axis<'static> {
 fn render_chart_dashboard(frame: &mut Frame, state: &SharedState) {
     let area = frame.area();
 
-    // Main layout: Stats bar | Charts | Help bar
+    // Main layout: Stats bar | Device bar | Training Charts | Help bar
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(5),  // Stats bar (same as Dashboard)
-            Constraint::Length(3),  // Device stats bar
-            Constraint::Min(10),    // Charts area
+            Constraint::Length(3),  // Device stats bar (compact CPU/GPU/RAM/VRAM)
+            Constraint::Min(10),    // Training charts (rewards + losses)
             Constraint::Length(3),  // Help bar
         ])
         .split(area);
@@ -1151,14 +1151,40 @@ fn render_chart_dashboard(frame: &mut Frame, state: &SharedState) {
     // Render stats bar (reuse existing)
     render_stats(frame, main_chunks[0], state);
 
-    // Render device stats bar (reuse existing)
+    // Render device stats bar (reuse existing - already compact)
     render_device_stats(frame, main_chunks[1], state);
 
-    // Render chart grid
-    render_chart_grid(frame, main_chunks[2], state);
+    // Render training charts (NEW: training metrics only)
+    render_training_charts(frame, main_chunks[2], state);
 
     // Render help with updated text
     render_chart_help(frame, main_chunks[3]);
+}
+
+/// Render training metrics charts (rewards + policy/value losses)
+fn render_training_charts(frame: &mut Frame, area: Rect, state: &SharedState) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(60),  // Reward chart (main focus)
+            Constraint::Percentage(40),  // Losses (policy + value side-by-side)
+        ])
+        .split(area);
+
+    // Top: Large reward chart
+    render_reward_chart(frame, chunks[0], state);
+
+    // Bottom: Policy and Value loss side-by-side
+    let loss_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ])
+        .split(chunks[1]);
+
+    render_policy_loss_chart(frame, loss_chunks[0], state);
+    render_value_loss_chart(frame, loss_chunks[1], state);
 }
 
 /// Render the chart grid with dynamic columns based on GPU availability
@@ -1277,6 +1303,66 @@ fn render_losses_chart(frame: &mut Frame, area: Rect, state: &SharedState) {
 
         let chart = Chart::new(datasets)
             .block(Block::default().borders(Borders::ALL).title(" Losses (Policy/Value) "))
+            .x_axis(create_x_axis(x_min, x_max))
+            .y_axis(create_y_axis(y_min, y_max, "Loss"));
+
+        frame.render_widget(chart, area);
+    }
+}
+
+/// Render policy loss chart (single series)
+fn render_policy_loss_chart(frame: &mut Frame, area: Rect, state: &SharedState) {
+    if let Ok(history) = state.history.lock() {
+        if history.steps.is_empty() {
+            let placeholder = Paragraph::new("Waiting for data...")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(Block::default().borders(Borders::ALL).title(" Policy Loss "));
+            frame.render_widget(placeholder, area);
+            return;
+        }
+
+        let data = history_to_chart_data(&history.steps, &history.policy_loss);
+        let (x_min, x_max, y_min, y_max) = calculate_bounds(&data, 0.05);
+
+        let dataset = Dataset::default()
+            .name("Policy")
+            .marker(symbols::Marker::Braille)
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(Color::Red))
+            .data(&data);
+
+        let chart = Chart::new(vec![dataset])
+            .block(Block::default().borders(Borders::ALL).title(" Policy Loss "))
+            .x_axis(create_x_axis(x_min, x_max))
+            .y_axis(create_y_axis(y_min, y_max, "Loss"));
+
+        frame.render_widget(chart, area);
+    }
+}
+
+/// Render value loss chart (single series)
+fn render_value_loss_chart(frame: &mut Frame, area: Rect, state: &SharedState) {
+    if let Ok(history) = state.history.lock() {
+        if history.steps.is_empty() {
+            let placeholder = Paragraph::new("Waiting for data...")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(Block::default().borders(Borders::ALL).title(" Value Loss "));
+            frame.render_widget(placeholder, area);
+            return;
+        }
+
+        let data = history_to_chart_data(&history.steps, &history.value_loss);
+        let (x_min, x_max, y_min, y_max) = calculate_bounds(&data, 0.05);
+
+        let dataset = Dataset::default()
+            .name("Value")
+            .marker(symbols::Marker::Braille)
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(Color::Blue))
+            .data(&data);
+
+        let chart = Chart::new(vec![dataset])
+            .block(Block::default().borders(Borders::ALL).title(" Value Loss "))
             .x_axis(create_x_axis(x_min, x_max))
             .y_axis(create_y_axis(y_min, y_max, "Loss"));
 

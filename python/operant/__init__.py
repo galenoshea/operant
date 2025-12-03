@@ -23,6 +23,7 @@ for step in range(1000):
 
 - `operant.envs`: High-performance Rust-backed environments
 - `operant.utils`: Training utilities (Logger, etc.)
+- `operant.models`: RL algorithms (PPO) - requires PyTorch
 """
 
 import sys
@@ -237,14 +238,63 @@ class _UtilsModule:
         return items
 
 
+class _ModelsModule:
+    """Lazy loader for models submodule - requires PyTorch.
+
+    This module provides RL algorithms like PPO that use:
+    - Rust-backed RolloutBuffer for fast rollout storage and GAE computation
+    - PyTorch for neural network training
+
+    Example:
+        >>> from operant.envs import CartPoleVecEnv
+        >>> from operant.models import PPO
+        >>>
+        >>> env = CartPoleVecEnv(num_envs=8)
+        >>> model = PPO(env, lr=3e-4)
+        >>> model.learn(total_timesteps=100000)
+    """
+
+    def __init__(self):
+        object.__setattr__(self, '_loaded_module', None)
+
+    def _load(self):
+        if object.__getattribute__(self, '_loaded_module') is None:
+            try:
+                import torch  # noqa: F401
+            except ImportError as e:
+                raise ImportError(
+                    "operant.models requires PyTorch. "
+                    "Install with: pip install operant[models] or pip install torch"
+                ) from e
+            from .models import Algorithm, PPO, ActorCritic, DiscreteActorCritic, ContinuousActorCritic
+            module = type('models', (), {
+                'Algorithm': Algorithm,
+                'PPO': PPO,
+                'ActorCritic': ActorCritic,
+                'DiscreteActorCritic': DiscreteActorCritic,
+                'ContinuousActorCritic': ContinuousActorCritic,
+            })()
+            object.__setattr__(self, '_loaded_module', module)
+        return object.__getattribute__(self, '_loaded_module')
+
+    def __getattr__(self, name: str):
+        return getattr(self._load(), name)
+
+    def __dir__(self):
+        return ["Algorithm", "PPO", "ActorCritic", "DiscreteActorCritic", "ContinuousActorCritic"]
+
+
 # Create submodule instances and register in sys.modules for proper import support
 envs = _EnvsModule()
 utils = _UtilsModule()
+models = _ModelsModule()
 
 # Override the Rust-created operant.envs with our facade that has clean names
 sys.modules['operant.envs'] = envs
 # Register utils as a proper module
 sys.modules['operant.utils'] = utils
+# Register models as a proper module (lazy loaded)
+sys.modules['operant.models'] = models
 
 # Backwards compatibility - deprecated root-level imports
 from .operant import PyCartPoleVecEnv, PyMountainCarVecEnv, PyPendulumVecEnv
@@ -289,6 +339,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "envs",
     "utils",
+    "models",
     # Space classes for type hints
     "BoxSpace",
     "DiscreteSpace",

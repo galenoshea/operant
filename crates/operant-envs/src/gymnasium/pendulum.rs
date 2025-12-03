@@ -248,11 +248,21 @@ impl Pendulum {
         let truncation_mask = new_ticks.simd_ge(max_steps_vec);
         let truncation_bits = truncation_mask.to_bitmask() as u8;
 
-        // Store terminal and truncation flags
-        for lane in 0..8 {
-            self.terminals[start_idx + lane] = 0;  // Pendulum has no terminals
-            self.truncations[start_idx + lane] = ((truncation_bits >> lane) & 1) as u8;
-        }
+        // Store terminal and truncation flags (optimized bitmask extraction)
+        // Pendulum has no terminal states, only truncations
+        let truncation_bytes: [u8; 8] = [
+            truncation_bits & 1,
+            (truncation_bits >> 1) & 1,
+            (truncation_bits >> 2) & 1,
+            (truncation_bits >> 3) & 1,
+            (truncation_bits >> 4) & 1,
+            (truncation_bits >> 5) & 1,
+            (truncation_bits >> 6) & 1,
+            (truncation_bits >> 7) & 1,
+        ];
+        // Zero out terminals (Pendulum never terminates)
+        self.terminals[start_idx..start_idx + 8].copy_from_slice(&[0u8; 8]);
+        self.truncations[start_idx..start_idx + 8].copy_from_slice(&truncation_bytes);
 
         // 4. SIMD episode reward accumulation
         let episode_rewards_vec = f32x8::from_slice(&self.episode_rewards[start_idx..start_idx + 8]);
@@ -476,9 +486,67 @@ impl Pendulum {
 
     /// Write observations to a flat buffer (cos(theta), sin(theta), theta_dot).
     pub fn write_observations(&self, buffer: &mut [f32]) {
-        assert_eq!(buffer.len(), self.num_envs * 3);
+        debug_assert!(buffer.len() >= self.num_envs * 3);
 
-        // PHASE 2: Use cached cos/sin values instead of recomputing
+        #[cfg(feature = "simd")]
+        {
+            self.write_observations_simd(buffer);
+        }
+
+        #[cfg(not(feature = "simd"))]
+        {
+            self.write_observations_scalar(buffer);
+        }
+    }
+
+    /// SIMD-optimized observation writing with interleaved SoA to AoS conversion.
+    /// Processes 8 environments at a time, interleaving cos_theta, sin_theta, theta_dot.
+    #[cfg(feature = "simd")]
+    fn write_observations_simd(&self, buffer: &mut [f32]) {
+        const LANES: usize = 8;
+        const OBS_DIM: usize = 3;
+        let num_chunks = self.num_envs / LANES;
+
+        for chunk in 0..num_chunks {
+            let in_base = chunk * LANES;
+            let out_base = chunk * LANES * OBS_DIM;
+
+            // Load 8 values from each cached array
+            let cos_arr = &self.cos_theta[in_base..in_base + LANES];
+            let sin_arr = &self.sin_theta[in_base..in_base + LANES];
+            let theta_dot_arr = &self.theta_dot[in_base..in_base + LANES];
+
+            // Interleave to AoS format: [cos0, sin0, tdot0, cos1, sin1, tdot1, ...]
+            // Process in pairs for cache efficiency
+            for pair in 0..4 {
+                let i = pair * 2;
+                let out_idx = out_base + pair * 6;
+
+                // First env of pair
+                buffer[out_idx] = cos_arr[i];
+                buffer[out_idx + 1] = sin_arr[i];
+                buffer[out_idx + 2] = theta_dot_arr[i];
+
+                // Second env of pair
+                buffer[out_idx + 3] = cos_arr[i + 1];
+                buffer[out_idx + 4] = sin_arr[i + 1];
+                buffer[out_idx + 5] = theta_dot_arr[i + 1];
+            }
+        }
+
+        // Handle remainder (environments not divisible by 8)
+        let remainder_start = num_chunks * LANES;
+        for i in remainder_start..self.num_envs {
+            let base = i * OBS_DIM;
+            buffer[base] = self.cos_theta[i];
+            buffer[base + 1] = self.sin_theta[i];
+            buffer[base + 2] = self.theta_dot[i];
+        }
+    }
+
+    /// Scalar fallback for observation writing.
+    #[cfg(not(feature = "simd"))]
+    fn write_observations_scalar(&self, buffer: &mut [f32]) {
         for i in 0..self.num_envs {
             buffer[i * 3] = self.cos_theta[i];
             buffer[i * 3 + 1] = self.sin_theta[i];

@@ -14,6 +14,9 @@ mod tui;
 #[cfg(feature = "tui")]
 use tui::TUILogger;
 
+mod rl;
+use rl::RolloutBuffer;
+
 /// High-performance vectorized CartPole environment.
 ///
 /// Uses SIMD-optimized Rust implementation with zero-copy numpy arrays.
@@ -725,11 +728,33 @@ fn register_tui_module(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+/// Register RL utilities module with RolloutBuffer.
+fn register_rl_module(parent: &Bound<'_, PyModule>) -> PyResult<()> {
+    let py = parent.py();
+    let rl_mod = PyModule::new(py, "_rl")?;
+
+    // Add RL classes to _rl submodule
+    rl_mod.add_class::<RolloutBuffer>()?;
+
+    // Register submodule with parent
+    parent.add_submodule(&rl_mod)?;
+
+    // Add to sys.modules for proper Python import
+    py.import("sys")?
+        .getattr("modules")?
+        .set_item("operant._rl", rl_mod)?;
+
+    Ok(())
+}
+
 /// Operant Python module.
 #[pymodule]
 fn operant(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register envs submodule
     register_envs_module(m)?;
+
+    // Register RL utilities submodule
+    register_rl_module(m)?;
 
     // Register TUI logger if feature enabled
     #[cfg(feature = "tui")]

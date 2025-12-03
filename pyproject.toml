@@ -27,7 +27,8 @@ classifiers = [
 dependencies = ["numpy>=2.0"]
 
 [project.optional-dependencies]
-dev = ["gymnasium>=1.0", "pytest>=8.0"]
+models = ["torch>=2.0"]
+dev = ["gymnasium>=1.0", "pytest>=8.0", "torch>=2.0"]
 
 [project.urls]
 Repository = "https://github.com/galenoshea/operant"
@@ -39,4 +40,5 @@ features = ["pyo3/extension-module", "simd", "parallel", "tui"]
 
 [tool.poetry.group.dev.dependencies]
 maturin = "^1.10.2"
+torch = ">=2.0"
 

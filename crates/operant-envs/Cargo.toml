@@ -23,3 +23,6 @@ rand_xoshiro = { workspace = true }
 rayon = { workspace = true, optional = true }
 
 [dev-dependencies]
+
+[[bench]]
+name = "step_benchmark"

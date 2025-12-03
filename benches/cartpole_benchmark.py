@@ -13,13 +13,14 @@ Usage:
 import argparse
 import time
 import numpy as np
-import gymnasium as gym
 
 from operant.envs import CartPoleVecEnv
 
 
 def benchmark_gymnasium(num_envs: int, num_steps: int, num_trials: int = 5) -> dict:
     """Benchmark gymnasium SyncVectorEnv with CartPole."""
+    import gymnasium as gym  # Lazy import - only needed for --all mode
+
     results = []
 
     for trial in range(num_trials):
@@ -167,7 +168,7 @@ def run_benchmark():
     return all_results
 
 
-def run_fast_benchmark(num_envs: int = 4096):
+def run_fast_benchmark(num_envs: int = 4096, workers: int = None):
     """Quick benchmark for Operant only, testing parallelization."""
     import os
     num_steps = 2000
@@ -176,34 +177,22 @@ def run_fast_benchmark(num_envs: int = 4096):
     # Get number of CPU cores for testing
     cpu_count = os.cpu_count() or 4
 
+    # If workers specified, just run that config; otherwise test multiple
+    if workers is not None:
+        worker_configs = [workers]
+    else:
+        worker_configs = [cpu_count]  # Default to max workers
+
     print("=" * 60)
     print(f"CartPole Benchmark - Operant ({num_envs} envs)")
     print("=" * 60)
     print()
 
-    # Test different worker counts
-    worker_configs = [1, 2, 4, cpu_count]
-    # Remove duplicates and sort
-    worker_configs = sorted(set(worker_configs))
-
-    results = {}
-
-    for workers in worker_configs:
-        label = f"workers={workers}"
+    for w in worker_configs:
+        label = f"workers={w}"
         print(f"Operant ({label})...  ", end="", flush=True)
-        op_results = benchmark_operant(num_envs, num_steps, num_trials, workers=workers)
-        results[workers] = op_results
+        op_results = benchmark_operant(num_envs, num_steps, num_trials, workers=w)
         print(f"{op_results['mean_sps']/1e6:>6.2f}M steps/sec")
-
-    print()
-    print("-" * 60)
-
-    # Calculate speedups relative to single-threaded
-    baseline = results[1]['mean_sps']
-    for workers in worker_configs:
-        if workers > 1:
-            speedup = results[workers]['mean_sps'] / baseline
-            print(f"Speedup with {workers} workers: {speedup:.2f}x")
 
     print()
     print(f"Total steps per config: {num_steps * num_envs * num_trials:,}")

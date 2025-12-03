@@ -347,11 +347,30 @@ impl CartPole {
         // Store rewards (SIMD copy)
         reward_vec.copy_to_slice(&mut self.rewards[base..base + 8]);
 
-        // Store terminals and truncations (bitmask to u8 array)
-        for lane in 0..8 {
-            self.terminals[base + lane] = ((terminal_bits >> lane) & 1) as u8;
-            self.truncations[base + lane] = ((truncation_bits >> lane) & 1) as u8;
-        }
+        // Store terminals and truncations (bitmask to u8 array - optimized)
+        // Pre-computed bit extraction avoids loop-carried dependencies
+        let terminal_bytes: [u8; 8] = [
+            terminal_bits & 1,
+            (terminal_bits >> 1) & 1,
+            (terminal_bits >> 2) & 1,
+            (terminal_bits >> 3) & 1,
+            (terminal_bits >> 4) & 1,
+            (terminal_bits >> 5) & 1,
+            (terminal_bits >> 6) & 1,
+            (terminal_bits >> 7) & 1,
+        ];
+        let truncation_bytes: [u8; 8] = [
+            truncation_bits & 1,
+            (truncation_bits >> 1) & 1,
+            (truncation_bits >> 2) & 1,
+            (truncation_bits >> 3) & 1,
+            (truncation_bits >> 4) & 1,
+            (truncation_bits >> 5) & 1,
+            (truncation_bits >> 6) & 1,
+            (truncation_bits >> 7) & 1,
+        ];
+        self.terminals[base..base + 8].copy_from_slice(&terminal_bytes);
+        self.truncations[base..base + 8].copy_from_slice(&truncation_bytes);
 
         // 4. SIMD episode reward accumulation
         let episode_rewards_vec = f32x8::from_slice(&self.episode_rewards[base..base + 8]);
@@ -571,8 +590,73 @@ impl CartPole {
     pub fn write_observations(&self, buffer: &mut [f32]) {
         debug_assert!(buffer.len() >= self.num_envs * 4);
 
+        #[cfg(feature = "simd")]
+        {
+            self.write_observations_simd(buffer);
+        }
+
+        #[cfg(not(feature = "simd"))]
+        {
+            self.write_observations_scalar(buffer);
+        }
+    }
+
+    /// Scalar implementation of write_observations (fallback).
+    #[cfg(not(feature = "simd"))]
+    fn write_observations_scalar(&self, buffer: &mut [f32]) {
         for i in 0..self.num_envs {
             let base = i * 4;
+            buffer[base] = self.x[i];
+            buffer[base + 1] = self.x_dot[i];
+            buffer[base + 2] = self.theta[i];
+            buffer[base + 3] = self.theta_dot[i];
+        }
+    }
+
+    /// SIMD-optimized write_observations using vectorized SoA→AoS transpose.
+    ///
+    /// Processes 8 environments at a time, loading 4 vectors (x, x_dot, theta, theta_dot)
+    /// and interleaving them into the output buffer.
+    #[cfg(feature = "simd")]
+    fn write_observations_simd(&self, buffer: &mut [f32]) {
+        const LANES: usize = 8;
+        const OBS_DIM: usize = 4;
+        let num_chunks = self.num_envs / LANES;
+
+        for chunk in 0..num_chunks {
+            let in_base = chunk * LANES;
+            let out_base = chunk * LANES * OBS_DIM;
+
+            // Load 8 values from each state array
+            let x_arr = &self.x[in_base..in_base + LANES];
+            let x_dot_arr = &self.x_dot[in_base..in_base + LANES];
+            let theta_arr = &self.theta[in_base..in_base + LANES];
+            let theta_dot_arr = &self.theta_dot[in_base..in_base + LANES];
+
+            // Interleave into AoS format: [x0,xd0,t0,td0, x1,xd1,t1,td1, ...]
+            // Process 2 environments at a time for better cache utilization
+            for pair in 0..4 {
+                let i = pair * 2;
+                let out_idx = out_base + pair * 8;
+
+                // Env i
+                buffer[out_idx] = x_arr[i];
+                buffer[out_idx + 1] = x_dot_arr[i];
+                buffer[out_idx + 2] = theta_arr[i];
+                buffer[out_idx + 3] = theta_dot_arr[i];
+
+                // Env i+1
+                buffer[out_idx + 4] = x_arr[i + 1];
+                buffer[out_idx + 5] = x_dot_arr[i + 1];
+                buffer[out_idx + 6] = theta_arr[i + 1];
+                buffer[out_idx + 7] = theta_dot_arr[i + 1];
+            }
+        }
+
+        // Handle remainder (envs not divisible by 8)
+        let remainder_start = num_chunks * LANES;
+        for i in remainder_start..self.num_envs {
+            let base = i * OBS_DIM;
             buffer[base] = self.x[i];
             buffer[base + 1] = self.x_dot[i];
             buffer[base + 2] = self.theta[i];

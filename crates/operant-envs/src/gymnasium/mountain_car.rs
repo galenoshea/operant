@@ -239,11 +239,29 @@ impl MountainCar {
         let terminal_mask = position.simd_ge(goal_threshold);
         let terminal_bits = terminal_mask.to_bitmask() as u8;
 
-        // Store terminal and truncation flags
-        for lane in 0..8 {
-            self.terminals[start_idx + lane] = ((terminal_bits >> lane) & 1) as u8;
-            self.truncations[start_idx + lane] = ((truncation_bits >> lane) & 1) as u8;
-        }
+        // Store terminal and truncation flags (optimized bitmask extraction)
+        let terminal_bytes: [u8; 8] = [
+            terminal_bits & 1,
+            (terminal_bits >> 1) & 1,
+            (terminal_bits >> 2) & 1,
+            (terminal_bits >> 3) & 1,
+            (terminal_bits >> 4) & 1,
+            (terminal_bits >> 5) & 1,
+            (terminal_bits >> 6) & 1,
+            (terminal_bits >> 7) & 1,
+        ];
+        let truncation_bytes: [u8; 8] = [
+            truncation_bits & 1,
+            (truncation_bits >> 1) & 1,
+            (truncation_bits >> 2) & 1,
+            (truncation_bits >> 3) & 1,
+            (truncation_bits >> 4) & 1,
+            (truncation_bits >> 5) & 1,
+            (truncation_bits >> 6) & 1,
+            (truncation_bits >> 7) & 1,
+        ];
+        self.terminals[start_idx..start_idx + 8].copy_from_slice(&terminal_bytes);
+        self.truncations[start_idx..start_idx + 8].copy_from_slice(&truncation_bytes);
 
         // 4. SIMD reward computation (constant -1.0 for MountainCar)
         let reward_vec = f32x8::splat(-1.0);
@@ -430,8 +448,63 @@ impl MountainCar {
 
     /// Write observations to a flat buffer.
     pub fn write_observations(&self, buffer: &mut [f32]) {
-        assert_eq!(buffer.len(), self.num_envs * 2);
+        debug_assert!(buffer.len() >= self.num_envs * 2);
 
+        #[cfg(feature = "simd")]
+        {
+            self.write_observations_simd(buffer);
+        }
+
+        #[cfg(not(feature = "simd"))]
+        {
+            self.write_observations_scalar(buffer);
+        }
+    }
+
+    /// SIMD-optimized observation writing with interleaved SoA to AoS conversion.
+    /// Processes 8 environments at a time, interleaving position and velocity.
+    #[cfg(feature = "simd")]
+    fn write_observations_simd(&self, buffer: &mut [f32]) {
+        const LANES: usize = 8;
+        const OBS_DIM: usize = 2;
+        let num_chunks = self.num_envs / LANES;
+
+        for chunk in 0..num_chunks {
+            let in_base = chunk * LANES;
+            let out_base = chunk * LANES * OBS_DIM;
+
+            // Load 8 positions and 8 velocities
+            let pos_arr = &self.position[in_base..in_base + LANES];
+            let vel_arr = &self.velocity[in_base..in_base + LANES];
+
+            // Interleave to AoS format: [pos0, vel0, pos1, vel1, ...]
+            // Process in pairs for cache efficiency
+            for pair in 0..4 {
+                let i = pair * 2;
+                let out_idx = out_base + pair * 4;
+
+                // First env of pair
+                buffer[out_idx] = pos_arr[i];
+                buffer[out_idx + 1] = vel_arr[i];
+
+                // Second env of pair
+                buffer[out_idx + 2] = pos_arr[i + 1];
+                buffer[out_idx + 3] = vel_arr[i + 1];
+            }
+        }
+
+        // Handle remainder (environments not divisible by 8)
+        let remainder_start = num_chunks * LANES;
+        for i in remainder_start..self.num_envs {
+            let base = i * OBS_DIM;
+            buffer[base] = self.position[i];
+            buffer[base + 1] = self.velocity[i];
+        }
+    }
+
+    /// Scalar fallback for observation writing.
+    #[cfg(not(feature = "simd"))]
+    fn write_observations_scalar(&self, buffer: &mut [f32]) {
         for i in 0..self.num_envs {
             buffer[i * 2] = self.position[i];
             buffer[i * 2 + 1] = self.velocity[i];
