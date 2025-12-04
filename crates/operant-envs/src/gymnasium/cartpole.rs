@@ -17,7 +17,7 @@ const FORCE_MAG: f32 = 10.0;
 const DT: f32 = 0.02;
 const X_THRESHOLD: f32 = 2.4;
 const THETA_THRESHOLD: f32 = 12.0 * std::f32::consts::PI / 180.0;
-const MAX_STEPS: u32 = 200;
+const MAX_STEPS: u32 = 500;  // Match CartPole-v1 (not v0 which uses 200)
 
 use operant_core::LogData;
 use crate::shared::rng::*;
@@ -153,10 +153,18 @@ impl CartPole {
 
         for i in 0..self.num_envs {
             self.reset_single(i, base_seed + i as u64);
+            // For initial reset, also clear the step outputs
+            self.rewards[i] = 0.0;
+            self.terminals[i] = 0;
+            self.truncations[i] = 0;
         }
     }
 
     /// Reset a single environment.
+    ///
+    /// NOTE: This intentionally does NOT reset rewards/terminals/truncations
+    /// because those contain the result of the step that triggered the reset.
+    /// Those values should be read by the agent before the next step clears them.
     #[inline]
     fn reset_single(&mut self, idx: usize, seed: u64) {
         let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
@@ -167,9 +175,9 @@ impl CartPole {
         self.theta[idx] = random_uniform(&mut rng, -self.init_range, self.init_range);
         self.theta_dot[idx] = random_uniform(&mut rng, -self.init_range, self.init_range);
 
-        self.rewards[idx] = 0.0;
-        self.terminals[idx] = 0;
-        self.truncations[idx] = 0;
+        // Don't reset rewards/terminals/truncations here!
+        // The agent needs to read these values from the terminal step.
+        // They will be overwritten on the next step anyway.
         self.ticks[idx] = 0;
         self.episode_rewards[idx] = 0.0;
     }

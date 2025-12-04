@@ -39,4 +39,6 @@ features = ["pyo3/extension-module", "simd", "parallel", "tui"]
 
 [tool.poetry.group.dev.dependencies]
 maturin = "^1.10.2"
+gym = "0.26.2"
+psutil = "^7.1.3"
 

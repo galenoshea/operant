@@ -463,3 +463,6 @@ impl RolloutBuffer {
         }
     }
 }
+
+// NOTE: GAE computation is tested via Python integration tests in python/tests/test_rollout.py
+// Python tests provide better coverage as they test through the FFI boundary
