@@ -70,8 +70,8 @@ impl LogData for PendulumLog {
 pub struct Pendulum {
     theta: Vec<f32>,
     theta_dot: Vec<f32>,
-    cos_theta: Vec<f32>,  // PHASE 2: Cached cos(theta) for observations
-    sin_theta: Vec<f32>,  // PHASE 2: Cached sin(theta) for observations
+    cos_theta: Vec<f32>,
+    sin_theta: Vec<f32>,
     rewards: Vec<f32>,
     terminals: Vec<u8>,
     truncations: Vec<u8>,
@@ -104,15 +104,20 @@ impl Pendulum {
         init_theta_range: f32,
         init_theta_dot_range: f32,
         workers: usize,
-    ) -> Self {
-        assert!(num_envs > 0, "num_envs must be at least 1");
+    ) -> operant_core::Result<Self> {
+        if num_envs == 0 {
+            return Err(operant_core::OperantError::InvalidConfig {
+                param: "num_envs".to_string(),
+                message: "must be at least 1".to_string(),
+            });
+        }
         let workers = workers.max(1); // Ensure at least 1 worker
 
-        Self {
+        Ok(Self {
             theta: vec![0.0; num_envs],
             theta_dot: vec![0.0; num_envs],
-            cos_theta: vec![0.0; num_envs],  // PHASE 2: Allocate cos cache
-            sin_theta: vec![0.0; num_envs],  // PHASE 2: Allocate sin cache
+            cos_theta: vec![0.0; num_envs],
+            sin_theta: vec![0.0; num_envs],
             rewards: vec![0.0; num_envs],
             terminals: vec![0; num_envs],
             truncations: vec![0; num_envs],
@@ -126,16 +131,16 @@ impl Pendulum {
             rng_seeds: (0..num_envs as u64).collect(),
             log: PendulumLog::default(),
             workers,
-        }
+        })
     }
 
     /// Create with default parameters (200 max steps, π init angle, 1.0 init velocity, single-threaded).
-    pub fn with_defaults(num_envs: usize) -> Self {
+    pub fn with_defaults(num_envs: usize) -> operant_core::Result<Self> {
         Self::new(num_envs, MAX_STEPS, std::f32::consts::PI, 1.0, 1)
     }
 
     /// Create with specified workers and default environment parameters.
-    pub fn with_workers(num_envs: usize, workers: usize) -> Self {
+    pub fn with_workers(num_envs: usize, workers: usize) -> operant_core::Result<Self> {
         Self::new(num_envs, MAX_STEPS, std::f32::consts::PI, 1.0, workers)
     }
 
@@ -155,6 +160,11 @@ impl Pendulum {
 
         self.theta[idx] = new_theta;
         self.theta_dot[idx] = new_theta_dot;
+
+        // Update cached sin/cos for observation writing (fix for NaN bug)
+        self.cos_theta[idx] = new_theta.cos();
+        self.sin_theta[idx] = new_theta.sin();
+
         self.ticks[idx] += 1;
 
         let truncated = self.ticks[idx] >= self.max_steps;
@@ -205,15 +215,11 @@ impl Pendulum {
         new_theta.copy_to_slice(&mut self.theta[start_idx..start_idx + 8]);
         new_theta_dot.copy_to_slice(&mut self.theta_dot[start_idx..start_idx + 8]);
 
-        // PHASE 2: Compute and cache cos/sin for observations
         let cos_vec = simd_cos(new_theta);
         let sin_vec = simd_sin(new_theta);
         cos_vec.copy_to_slice(&mut self.cos_theta[start_idx..start_idx + 8]);
         sin_vec.copy_to_slice(&mut self.sin_theta[start_idx..start_idx + 8]);
 
-        // PHASE 1 OPTIMIZATION: Vectorize post-SIMD loop
-
-        // 1. SIMD tick increment
         let ticks_vec = f32x8::from_array([
             self.ticks[start_idx] as f32,
             self.ticks[start_idx + 1] as f32,
@@ -226,12 +232,10 @@ impl Pendulum {
         ]);
         let new_ticks = ticks_vec + f32x8::splat(1.0);
 
-        // Store back as u32
         for lane in 0..8 {
             self.ticks[start_idx + lane] = new_ticks.to_array()[lane] as u32;
         }
 
-        // 2. SIMD reward computation (already computed above)
         let theta_squared = new_theta * new_theta;
         let theta_dot_squared = new_theta_dot * new_theta_dot;
         let torque_squared = torque * torque;
@@ -243,13 +247,10 @@ impl Pendulum {
 
         reward.copy_to_slice(&mut self.rewards[start_idx..start_idx + 8]);
 
-        // 3. SIMD truncation check
         let max_steps_vec = f32x8::splat(self.max_steps as f32);
         let truncation_mask = new_ticks.simd_ge(max_steps_vec);
         let truncation_bits = truncation_mask.to_bitmask() as u8;
 
-        // Store terminal and truncation flags (optimized bitmask extraction)
-        // Pendulum has no terminal states, only truncations
         let truncation_bytes: [u8; 8] = [
             truncation_bits & 1,
             (truncation_bits >> 1) & 1,
@@ -260,17 +261,14 @@ impl Pendulum {
             (truncation_bits >> 6) & 1,
             (truncation_bits >> 7) & 1,
         ];
-        // Zero out terminals (Pendulum never terminates)
         self.terminals[start_idx..start_idx + 8].copy_from_slice(&[0u8; 8]);
         self.truncations[start_idx..start_idx + 8].copy_from_slice(&truncation_bytes);
 
-        // 4. SIMD episode reward accumulation
         let episode_rewards_vec = f32x8::from_slice(&self.episode_rewards[start_idx..start_idx + 8]);
         let reward_vec = f32x8::from_slice(&self.rewards[start_idx..start_idx + 8]);
         let new_episode_rewards = episode_rewards_vec + reward_vec;
         new_episode_rewards.copy_to_slice(&mut self.episode_rewards[start_idx..start_idx + 8]);
 
-        // 5. Batch log updates (outside inner loop)
         let mut chunk_total_reward = 0.0;
         let mut chunk_episode_count = 0;
         let mut chunk_total_steps = 0;
@@ -340,7 +338,6 @@ impl Pendulum {
         let init_theta_range = self.init_theta_range;
         let init_theta_dot_range = self.init_theta_dot_range;
 
-        // Process chunks in parallel, collecting thread-local logs
         let chunk_logs: Vec<PendulumLog> = (0..workers)
             .into_par_iter()
             .map(|worker_idx| {
@@ -374,7 +371,6 @@ impl Pendulum {
                         *theta_ptr.add(i) = new_theta;
                         *theta_dot_ptr.add(i) = new_theta_dot;
 
-                        // Cache cos/sin for observations
                         *cos_theta_ptr.add(i) = new_theta.cos();
                         *sin_theta_ptr.add(i) = new_theta.sin();
 
@@ -383,7 +379,7 @@ impl Pendulum {
 
                         let truncated = tick >= max_steps;
 
-                        *terminals_ptr.add(i) = 0; // Pendulum has no terminal states
+                        *terminals_ptr.add(i) = 0;
                         *truncations_ptr.add(i) = truncated as u8;
 
                         let cost = theta * theta + 0.1 * theta_dot * theta_dot + 0.001 * torque * torque;
@@ -399,7 +395,6 @@ impl Pendulum {
                             local_log.episode_count += 1;
                             local_log.total_steps += tick;
 
-                            // Auto-reset
                             let seed = *rng_seeds_ptr.add(i);
                             *rng_seeds_ptr.add(i) = seed.wrapping_add(1);
 
@@ -407,7 +402,6 @@ impl Pendulum {
                             *theta_ptr.add(i) = random_uniform(&mut rng, -init_theta_range, init_theta_range);
                             *theta_dot_ptr.add(i) = random_uniform(&mut rng, -init_theta_dot_range, init_theta_dot_range);
 
-                            // Update cached cos/sin after reset
                             *cos_theta_ptr.add(i) = (*theta_ptr.add(i)).cos();
                             *sin_theta_ptr.add(i) = (*theta_ptr.add(i)).sin();
 
@@ -423,7 +417,6 @@ impl Pendulum {
             })
             .collect();
 
-        // Merge all thread-local logs into main log
         for chunk_log in chunk_logs {
             self.log.merge(&chunk_log);
         }
@@ -442,7 +435,6 @@ impl Pendulum {
             self.init_theta_dot_range,
         );
 
-        // PHASE 2: Initialize cached cos/sin for observations
         self.cos_theta[idx] = self.theta[idx].cos();
         self.sin_theta[idx] = self.theta[idx].sin();
 
@@ -457,26 +449,22 @@ impl Pendulum {
     /// Dispatches to parallel, SIMD, or scalar implementation based on
     /// configuration and feature flags.
     pub fn step_auto_reset(&mut self, actions: &[f32]) {
-        // Parallel path (includes auto-reset)
         #[cfg(feature = "parallel")]
         if self.workers > 1 {
             self.step_parallel(actions);
             return;
         }
 
-        // SIMD path
         #[cfg(feature = "simd")]
         {
             self.step_simd(actions);
         }
 
-        // Scalar path
         #[cfg(not(feature = "simd"))]
         {
             self.step_scalar(actions);
         }
 
-        // Auto-reset for non-parallel paths
         for i in 0..self.num_envs {
             if self.truncations[i] != 0 {
                 self.reset_single_env(i);
@@ -511,30 +499,24 @@ impl Pendulum {
             let in_base = chunk * LANES;
             let out_base = chunk * LANES * OBS_DIM;
 
-            // Load 8 values from each cached array
             let cos_arr = &self.cos_theta[in_base..in_base + LANES];
             let sin_arr = &self.sin_theta[in_base..in_base + LANES];
             let theta_dot_arr = &self.theta_dot[in_base..in_base + LANES];
 
-            // Interleave to AoS format: [cos0, sin0, tdot0, cos1, sin1, tdot1, ...]
-            // Process in pairs for cache efficiency
             for pair in 0..4 {
                 let i = pair * 2;
                 let out_idx = out_base + pair * 6;
 
-                // First env of pair
                 buffer[out_idx] = cos_arr[i];
                 buffer[out_idx + 1] = sin_arr[i];
                 buffer[out_idx + 2] = theta_dot_arr[i];
 
-                // Second env of pair
                 buffer[out_idx + 3] = cos_arr[i + 1];
                 buffer[out_idx + 4] = sin_arr[i + 1];
                 buffer[out_idx + 5] = theta_dot_arr[i + 1];
             }
         }
 
-        // Handle remainder (environments not divisible by 8)
         let remainder_start = num_chunks * LANES;
         for i in remainder_start..self.num_envs {
             let base = i * OBS_DIM;
@@ -583,7 +565,7 @@ impl Pendulum {
     }
 }
 
-impl operant_core::VecEnvironment for Pendulum {
+impl operant_core::Environment for Pendulum {
     fn num_envs(&self) -> usize {
         self.num_envs
     }
@@ -601,6 +583,8 @@ impl operant_core::VecEnvironment for Pendulum {
         for i in 0..self.num_envs {
             self.rng_seeds[i] = seed.wrapping_add(i as u64);
             self.reset_single_env(i);
+            // Clear step outputs after reset (fix for NaN bug)
+            self.rewards[i] = 0.0;
         }
     }
 
@@ -650,7 +634,7 @@ fn simd_angle_normalize(angle: f32x8) -> f32x8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use operant_core::VecEnvironment;
+    use operant_core::Environment;
 
     #[test]
     fn test_creation() {
@@ -857,13 +841,10 @@ mod tests {
         let mut buffer = vec![0.0f32; 8 * 3];
         env.write_observations(&mut buffer);
 
-        // Verify buffer contains valid observations (cos, sin, theta_dot)
         for i in 0..8 {
             let base = i * 3;
-            // cos and sin should be in [-1, 1] range (with small tolerance for Taylor)
             assert!(buffer[base].abs() <= 1.01, "cos(theta) should be in range");
             assert!(buffer[base + 1].abs() <= 1.01, "sin(theta) should be in range");
-            // Angular velocity should match
             assert_eq!(buffer[base + 2], env.theta_dot[i]);
         }
     }
@@ -873,17 +854,14 @@ mod tests {
         let mut env = Pendulum::with_defaults(32);
         env.reset(0);
 
-        // Run some steps
         let actions: Vec<f32> = vec![0.0; 32];
         for _ in 0..300 {
             env.step_auto_reset(&actions);
         }
 
         let log = env.get_log();
-        // Should have completed at least some episodes
         assert!(log.episode_count > 0, "Should complete some episodes");
         assert!(log.total_steps > 0, "Should count steps");
-        // Pendulum has negative rewards, so total_reward should be negative
         assert!(log.total_reward < 0.0, "Pendulum rewards should be negative");
     }
 
@@ -892,13 +870,11 @@ mod tests {
         let mut env = Pendulum::with_defaults(16);
         env.reset(0);
 
-        // Run steps and accumulate log data
         let actions = vec![0.0; 16];
         for _ in 0..100 {
             env.step_auto_reset(&actions);
         }
 
-        // Clear and verify
         env.clear_log();
         let log = env.get_log();
         assert_eq!(log.episode_count, 0);
@@ -921,7 +897,6 @@ mod tests {
         env1.step_auto_reset(&positive);
         env2.step_auto_reset(&negative);
 
-        // Different torques should produce different angular velocities
         assert_ne!(env1.theta_dot[0], env2.theta_dot[0], "Different torques should change angular velocity");
     }
 
@@ -933,7 +908,6 @@ mod tests {
         let actions = vec![0.5; 64];
         env.step_auto_reset(&actions);
 
-        // Check that all arrays have correct length
         assert_eq!(env.theta.len(), 64);
         assert_eq!(env.theta_dot.len(), 64);
         assert_eq!(env.cos_theta.len(), 64);
@@ -959,10 +933,9 @@ mod tests {
         let actions = vec![0.5; 64];
         env.step_parallel(&actions);
 
-        // Verify step executed correctly
         for i in 0..64 {
             assert_eq!(env.ticks[i], 1);
-            assert!(env.rewards[i] <= 0.0); // Pendulum has negative rewards
+            assert!(env.rewards[i] <= 0.0);
         }
     }
 
@@ -1008,17 +981,14 @@ mod tests {
         let mut env = Pendulum::with_workers(64, 4);
         env.reset(0);
 
-        // Run enough steps to complete episodes
         let actions = vec![0.0; 64];
         for _ in 0..300 {
             env.step_auto_reset(&actions);
         }
 
         let log = env.get_log();
-        // Should have completed at least some episodes
         assert!(log.episode_count > 0, "Should complete some episodes");
         assert!(log.total_steps > 0, "Should count steps");
-        // Pendulum rewards are negative
         assert!(log.total_reward < 0.0, "Pendulum rewards should be negative");
     }
 
@@ -1028,13 +998,11 @@ mod tests {
         let mut env = Pendulum::new(16, 10, std::f32::consts::PI, 1.0, 4);
         env.reset(0);
 
-        // Run enough steps to trigger resets
         let actions = vec![0.0; 16];
         for _ in 0..15 {
             env.step_auto_reset(&actions);
         }
 
-        // Some environments should have reset
         let any_reset = env.ticks.iter().any(|&t| t < 10);
         assert!(any_reset, "Expected at least one environment to reset");
     }

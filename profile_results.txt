@@ -1,0 +1,76 @@
+         3864848 function calls (3718975 primitive calls) in 2.393 seconds
+
+   Ordered by: cumulative time
+   List reduced from 6789 to 30 due to restriction <30>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    30/20    0.000    0.000    6.289    0.314 _ops.py:316(fallthrough)
+      148    0.002    0.000    2.680    0.018 __init__.py:1(<module>)
+    25/20    0.000    0.000    1.746    0.087 _ops.py:296(py_impl)
+       56    0.000    0.000    1.204    0.022 library.py:653(wrap)
+        3    0.000    0.000    1.160    0.387 _ops.py:161(py_functionalize_impl)
+        1    0.000    0.000    0.884    0.884 joint_graph.py:1(<module>)
+        1    0.000    0.000    0.882    0.882 pattern_matcher.py:1(<module>)
+        1    0.001    0.001    0.878    0.878 lowering.py:1(<module>)
+       45    0.003    0.000    0.710    0.016 library.py:135(define)
+        1    0.000    0.000    0.670    0.670 mm.py:1(<module>)
+        3    0.000    0.000    0.588    0.196 _ops.py:268(__init__)
+        1    0.000    0.000    0.566    0.566 triton_kernel_wrap.py:797(__init__)
+        1    0.000    0.000    0.566    0.566 gemm_template.py:1(<module>)
+        1    0.000    0.000    0.564    0.564 cuda_kernel.py:1(<module>)
+        1    0.000    0.000    0.562    0.562 cpp_wrapper_cpu.py:1(<module>)
+        1    0.000    0.000    0.561    0.561 aoti_hipify_utils.py:1(<module>)
+        1    0.003    0.003    0.560    0.560 hipify_python.py:1(<module>)
+       14    0.001    0.000    0.432    0.031 utils.py:1(<module>)
+       18    0.001    0.000    0.388    0.022 __init__.py:356(<genexpr>)
+        2    0.000    0.000    0.377    0.189 exc.py:1(<module>)
+        7    0.000    0.000    0.362    0.052 inductor_prims.py:18(make_prim)
+        7    0.000    0.000    0.362    0.052 __init__.py:267(_make_prim)
+5399/2264    0.003    0.000    0.321    0.000 {built-in method builtins.any}
+        8    0.000    0.000    0.315    0.039 custom_ops.py:145(inner)
+      8/1    0.000    0.000    0.313    0.313 module.py:912(_apply)
+        1    0.001    0.001    0.302    0.302 symbolic_shapes.py:1(<module>)
+      511    0.001    0.000    0.294    0.001 dataclasses.py:1257(wrap)
+      511    0.013    0.000    0.294    0.001 dataclasses.py:921(_process_class)
+        3    0.000    0.000    0.285    0.095 functions.py:1(<module>)
+      128    0.003    0.000    0.244    0.002 library.py:293(impl)
+
+
+         3864848 function calls (3718975 primitive calls) in 2.393 seconds
+
+   Ordered by: internal time
+   List reduced from 6789 to 30 due to restriction <30>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        4    0.164    0.041    0.164    0.041 {built-in method torch._C._cuda_getDeviceCount}
+     5223    0.158    0.000    0.181    0.000 hipify_python.py:687(add)
+   3375/4    0.134    0.000    0.014    0.004 {built-in method builtins.exec}
+        9    0.123    0.014    0.143    0.016 {method 'to' of 'torch._C.TensorBase' objects}
+     1407    0.115    0.000    0.115    0.000 {built-in method marshal.loads}
+  45602/2    0.105    0.000    0.166    0.083 hipify_python.py:719(_pattern)
+     9198    0.100    0.000    0.101    0.000 _ops.py:1045(<genexpr>)
+  7563/88    0.069    0.000    0.155    0.002 _parser.py:512(_parse)
+     4344    0.048    0.000    0.048    0.000 inspect.py:3045(<genexpr>)
+445610/445570    0.038    0.000    0.039    0.000 {built-in method builtins.isinstance}
+   196031    0.036    0.000    0.072    0.000 {built-in method builtins.getattr}
+  7854/79    0.034    0.000    0.058    0.001 _compiler.py:37(_compile)
+3144/3041    0.031    0.000    0.202    0.000 {built-in method builtins.__build_class__}
+     6453    0.031    0.000    0.031    0.000 {built-in method posix.stat}
+     9336    0.027    0.000    0.027    0.000 {built-in method posix.lstat}
+360386/349547    0.025    0.000    0.026    0.000 {built-in method builtins.len}
+     50/7    0.024    0.000    0.024    0.003 frontend.py:897(build_Attribute)
+   278476    0.022    0.000    0.022    0.000 {method 'append' of 'list' objects}
+     1409    0.018    0.000    0.018    0.000 {built-in method _io.open_code}
+       23    0.017    0.001    0.069    0.003 utils.py:1052(_materialize_cpp_cia_ops)
+   123178    0.017    0.000    0.026    0.000 _parser.py:168(__getitem__)
+      479    0.016    0.000    0.038    0.000 assumptions.py:614(_prepare_class_assumptions)
+        5    0.016    0.003    0.016    0.003 __init__.py:782(_raw_device_count_nvml)
+    25222    0.016    0.000    0.027    0.000 tokenize.py:569(_generate_tokens_from_c_tokenizer)
+1408/1241    0.016    0.000    0.014    0.000 {method 'read' of '_io.BufferedReader' objects}
+  759/758    0.013    0.000    0.056    0.000 <frozen posixpath>:437(_joinrealpath)
+     1407    0.013    0.000    0.129    0.000 <frozen importlib._bootstrap_external>:751(_compile_bytecode)
+   114572    0.013    0.000    0.013    0.000 {method 'setdefault' of 'dict' objects}
+      511    0.013    0.000    0.294    0.001 dataclasses.py:921(_process_class)
+    50079    0.012    0.000    0.026    0.000 __init__.py:255(escape)
+
+

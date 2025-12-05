@@ -3,14 +3,17 @@
 This package provides fast, SIMD-optimized vectorized reinforcement learning
 environments implemented in Rust with Python bindings.
 
+All environments in Operant are vectorized by default - this is the standard interface
+for maximum throughput and performance.
+
 ## Quick Start
 
 ```python
 import numpy as np
-from operant.envs import CartPoleVecEnv
+from operant.envs import CartPole
 
-# Create 4096 parallel environments
-env = CartPoleVecEnv(num_envs=4096)
+# Create 4096 parallel environments - vectorization is the standard
+env = CartPole(num_envs=4096)
 obs, info = env.reset(seed=42)
 
 # Run training loop
@@ -21,8 +24,8 @@ for step in range(1000):
 
 ## Modules
 
-- `operant.envs`: High-performance Rust-backed environments
-- `operant.utils`: Training utilities (Logger, etc.)
+- `operant.envs`: High-performance Rust-backed environments (CartPole, MountainCar, Pendulum)
+- `operant.utils`: Training utilities (Logger, TUILogger)
 - `operant.models`: RL algorithms (PPO) - requires PyTorch
 """
 
@@ -187,6 +190,19 @@ def _create_pendulum_vec_env(num_envs: int = 1, workers: int = 1) -> _VecEnvWrap
     return _VecEnvWrapper(_rust_envs.PyPendulumVecEnv(num_envs, workers=workers))
 
 
+def _create_cartpole_gpu_env(num_envs: int = 1, device_id: int = 0) -> _VecEnvWrapper:
+    """Create a GPU-accelerated vectorized CartPole environment."""
+    return _VecEnvWrapper(_rust_envs.PyCartPoleGpuEnv(num_envs, device_id=device_id))
+
+
+# Check if CUDA support is available
+try:
+    _rust_envs.PyCartPoleGpuEnv
+    CUDA_AVAILABLE = True
+except AttributeError:
+    CUDA_AVAILABLE = False
+
+
 # =============================================================================
 # Module Facades
 # =============================================================================
@@ -198,22 +214,94 @@ class _EnvsModule:
         pass  # Lazy initialization
 
     @staticmethod
+    def CartPole(num_envs: int = 1, workers: int = 1) -> _VecEnvWrapper:
+        """Create a vectorized CartPole environment.
+
+        All environments in Operant are vectorized by default - this is the standard interface.
+        """
+        return _create_cartpole_vec_env(num_envs, workers=workers)
+
+    @staticmethod
+    def MountainCar(num_envs: int = 1, workers: int = 1) -> _VecEnvWrapper:
+        """Create a vectorized MountainCar environment.
+
+        All environments in Operant are vectorized by default - this is the standard interface.
+        """
+        return _create_mountaincar_vec_env(num_envs, workers=workers)
+
+    @staticmethod
+    def Pendulum(num_envs: int = 1, workers: int = 1) -> _VecEnvWrapper:
+        """Create a vectorized Pendulum environment.
+
+        All environments in Operant are vectorized by default - this is the standard interface.
+        """
+        return _create_pendulum_vec_env(num_envs, workers=workers)
+
+    @staticmethod
+    def CartPoleGpu(num_envs: int = 1, device_id: int = 0) -> _VecEnvWrapper:
+        """Create a GPU-accelerated vectorized CartPole environment.
+
+        Requires CUDA support. All physics computation happens on GPU.
+
+        Args:
+            num_envs: Number of parallel environments
+            device_id: CUDA device ID (default: 0)
+
+        Raises:
+            ImportError: If CUDA support is not available (build with --features cuda)
+        """
+        if not CUDA_AVAILABLE:
+            raise ImportError(
+                "GPU environments not available. "
+                "Build Operant with CUDA support: poetry run maturin develop --release --features cuda"
+            )
+        return _create_cartpole_gpu_env(num_envs, device_id=device_id)
+
+    # Backwards compatibility aliases (will be removed in v0.5.0)
+    @staticmethod
     def CartPoleVecEnv(num_envs: int = 1, workers: int = 1) -> _VecEnvWrapper:
-        """Create a vectorized CartPole environment."""
+        """[DEPRECATED] Use CartPole instead. Will be removed in v0.5.0."""
+        warnings.warn(
+            "CartPoleVecEnv is deprecated. Use CartPole instead. "
+            "This alias will be removed in v0.5.0.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return _create_cartpole_vec_env(num_envs, workers=workers)
 
     @staticmethod
     def MountainCarVecEnv(num_envs: int = 1, workers: int = 1) -> _VecEnvWrapper:
-        """Create a vectorized MountainCar environment."""
+        """[DEPRECATED] Use MountainCar instead. Will be removed in v0.5.0."""
+        warnings.warn(
+            "MountainCarVecEnv is deprecated. Use MountainCar instead. "
+            "This alias will be removed in v0.5.0.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return _create_mountaincar_vec_env(num_envs, workers=workers)
 
     @staticmethod
     def PendulumVecEnv(num_envs: int = 1, workers: int = 1) -> _VecEnvWrapper:
-        """Create a vectorized Pendulum environment."""
+        """[DEPRECATED] Use Pendulum instead. Will be removed in v0.5.0."""
+        warnings.warn(
+            "PendulumVecEnv is deprecated. Use Pendulum instead. "
+            "This alias will be removed in v0.5.0.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return _create_pendulum_vec_env(num_envs, workers=workers)
 
     def __dir__(self):
-        return ["CartPoleVecEnv", "MountainCarVecEnv", "PendulumVecEnv"]
+        items = [
+            # New clean names (standard)
+            "CartPole", "MountainCar", "Pendulum",
+            # Deprecated names (backwards compatibility)
+            "CartPoleVecEnv", "MountainCarVecEnv", "PendulumVecEnv"
+        ]
+        # Add GPU environment if available
+        if CUDA_AVAILABLE:
+            items.append("CartPoleGpu")
+        return items
 
 
 class _UtilsModule:
@@ -283,13 +371,14 @@ class _ModelsModule:
             try:
                 # Now import the real models package
                 from operant.models import (
-                    Algorithm, PPO, ActorCritic, DiscreteActorCritic,
+                    Algorithm, PPO, PPOConfig, ActorCritic, DiscreteActorCritic,
                     ContinuousActorCritic, PopArtValueHead, RND, ICM
                 )
 
                 module = type('models', (), {
                     'Algorithm': Algorithm,
                     'PPO': PPO,
+                    'PPOConfig': PPOConfig,
                     'ActorCritic': ActorCritic,
                     'DiscreteActorCritic': DiscreteActorCritic,
                     'ContinuousActorCritic': ContinuousActorCritic,
@@ -309,7 +398,7 @@ class _ModelsModule:
         return getattr(self._load(), name)
 
     def __dir__(self):
-        return ["Algorithm", "PPO", "ActorCritic", "DiscreteActorCritic",
+        return ["Algorithm", "PPO", "PPOConfig", "ActorCritic", "DiscreteActorCritic",
                 "ContinuousActorCritic", "PopArtValueHead", "RND", "ICM"]
 
 
@@ -375,9 +464,11 @@ __all__ = [
     # TUI Logger (primary)
     "TUILogger",
     "Logger",  # Alias for TUILogger
+    # CUDA availability
+    "CUDA_AVAILABLE",
     # Deprecated - for backwards compatibility only
     "PyCartPoleVecEnv",
     "PyMountainCarVecEnv",
     "PyPendulumVecEnv",
 ]
-__version__ = "0.3.3"
+__version__ = "0.4.0"

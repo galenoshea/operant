@@ -1,4 +1,4 @@
-//! Vectorized environment traits for high-performance RL.
+//! Environment traits for high-performance parallel RL.
 
 use std::fmt::Debug;
 
@@ -14,8 +14,30 @@ pub trait LogData: Clone + Debug + Default {
     fn episode_count(&self) -> f32;
 }
 
-/// Trait for vectorized environments with SoA memory layout.
-pub trait VecEnvironment {
+/// Trait for parallel/batched environments with SoA memory layout.
+///
+/// All environments in Operant are vectorized by default - this is the standard
+/// interface for implementing custom environments. Vectorization enables processing
+/// multiple environment instances simultaneously for maximum throughput.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use operant_core::Environment;
+///
+/// struct MyEnv {
+///     num_envs: usize,
+///     // ... other fields
+/// }
+///
+/// impl Environment for MyEnv {
+///     fn num_envs(&self) -> usize {
+///         self.num_envs
+///     }
+///     // ... implement other methods
+/// }
+/// ```
+pub trait Environment {
     /// Returns the number of parallel environments.
     fn num_envs(&self) -> usize;
 

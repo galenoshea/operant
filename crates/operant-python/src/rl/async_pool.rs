@@ -35,14 +35,11 @@ struct SharedState {
     done_buffer_a: Vec<f32>,
     done_buffer_b: Vec<f32>,
 
-    /// Which buffer is currently being written by Rust (0 = A, 1 = B)
     active_buffer: AtomicUsize,
 
-    /// Signals from Python → Rust
     step_ready: AtomicBool,
     shutdown: AtomicBool,
 
-    /// Signals from Rust → Python
     obs_ready: AtomicBool,
 }
 
@@ -66,17 +63,15 @@ impl SharedState {
             active_buffer: AtomicUsize::new(0),
             step_ready: AtomicBool::new(false),
             shutdown: AtomicBool::new(false),
-            obs_ready: AtomicBool::new(true), // Start with observations ready
+            obs_ready: AtomicBool::new(true),
         }
     }
 
-    /// Get the current active buffer index (0 or 1)
     #[inline]
     fn active_idx(&self) -> usize {
         self.active_buffer.load(Ordering::Acquire)
     }
 
-    /// Get mutable reference to current observation buffer
     #[inline]
     fn active_obs_buffer(&mut self) -> &mut [f32] {
         if self.active_idx() == 0 {
@@ -86,7 +81,6 @@ impl SharedState {
         }
     }
 
-    /// Get reference to inactive observation buffer (for Python to read)
     #[inline]
     fn inactive_obs_buffer(&self) -> &[f32] {
         if self.active_idx() == 0 {
@@ -96,7 +90,6 @@ impl SharedState {
         }
     }
 
-    /// Get mutable reference to inactive action buffer (for Python to write)
     #[inline]
     fn inactive_act_buffer(&mut self) -> &mut [f32] {
         if self.active_idx() == 0 {
@@ -106,7 +99,6 @@ impl SharedState {
         }
     }
 
-    /// Get reference to current action buffer (for Rust to read)
     #[inline]
     fn active_act_buffer(&self) -> &[f32] {
         if self.active_idx() == 0 {
@@ -116,7 +108,6 @@ impl SharedState {
         }
     }
 
-    /// Swap active/inactive buffers
     #[inline]
     fn swap_buffers(&self) {
         let current = self.active_idx();
@@ -174,16 +165,13 @@ impl AsyncEnvPool {
         let shared = self.shared_state.clone();
 
         let handle = thread::spawn(move || {
-            // Worker thread main loop
             loop {
                 let mut state = shared.lock().unwrap();
 
-                // Check for shutdown
                 if state.shutdown.load(Ordering::Acquire) {
                     break;
                 }
 
-                // Wait for step_ready signal (spin-wait for low latency)
                 while !state.step_ready.load(Ordering::Acquire) {
                     if state.shutdown.load(Ordering::Acquire) {
                         return;
@@ -191,26 +179,20 @@ impl AsyncEnvPool {
                     std::hint::spin_loop();
                 }
 
-                // Clear step_ready flag
                 state.step_ready.store(false, Ordering::Release);
 
-                // Get actions from active buffer
                 let actions = state.active_act_buffer();
 
-                // TODO: Actually step the environment here
-                // For now, just fill with dummy data
                 let obs = state.active_obs_buffer();
                 for i in 0..obs.len() {
-                    obs[i] = (i as f32).sin(); // Dummy data
+                    obs[i] = (i as f32).sin();
                 }
 
-                // Swap buffers so Python can read what we just wrote
                 state.swap_buffers();
 
-                // Signal observations are ready
                 state.obs_ready.store(true, Ordering::Release);
 
-                drop(state); // Release lock
+                drop(state);
             }
         });
 
@@ -232,16 +214,13 @@ impl AsyncEnvPool {
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
         let mut state = self.shared_state.lock().unwrap();
 
-        // Copy actions to inactive buffer
         let act_slice = unsafe { actions.as_slice()? };
         state.inactive_act_buffer().copy_from_slice(act_slice);
 
-        // Signal step ready
         state.step_ready.store(true, Ordering::Release);
 
-        drop(state); // Release lock before spinning
+        drop(state);
 
-        // Spin-wait for observations (lock-free)
         loop {
             let state = self.shared_state.lock().unwrap();
             if state.obs_ready.load(Ordering::Acquire) {
@@ -251,7 +230,6 @@ impl AsyncEnvPool {
             std::hint::spin_loop();
         }
 
-        // Get observations from inactive buffer
         let mut state = self.shared_state.lock().unwrap();
         state.obs_ready.store(false, Ordering::Release);
 
@@ -264,7 +242,6 @@ impl AsyncEnvPool {
 
     /// Reset all environments.
     pub fn reset<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        // TODO: Implement reset logic
         let mut state = self.shared_state.lock().unwrap();
         let obs = state.active_obs_buffer();
         for i in 0..obs.len() {

@@ -1,8 +1,9 @@
 //! High-performance rollout buffer with GAE computation.
 
-use numpy::{PyArray1, PyArray2, PyArray3, PyArrayMethods, ToPyArray};
+use numpy::{PyArray1, PyArray2, PyArray3, PyArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use crate::buffer::{Buffer1D, Buffer2D};
 
 /// High-performance rollout buffer for PPO-style algorithms.
 ///
@@ -241,7 +242,6 @@ impl RolloutBuffer {
             }
         }
 
-        // Compute returns = advantages + values
         #[cfg(feature = "simd")]
         {
             self.compute_returns_simd();
@@ -260,32 +260,31 @@ impl RolloutBuffer {
     /// Get flattened data arrays for training.
     ///
     /// Returns (observations, actions, log_probs, advantages, returns) as numpy arrays.
-    pub fn get_all<'py>(
+    pub fn get_all(
         &self,
-        py: Python<'py>,
-    ) -> PyResult<(
-        Bound<'py, PyArray2<f32>>,
-        Bound<'py, PyArray1<f32>>,
-        Bound<'py, PyArray1<f32>>,
-        Bound<'py, PyArray1<f32>>,
-        Bound<'py, PyArray1<f32>>,
-    )> {
+    ) -> PyResult<(Buffer2D, Buffer1D, Buffer1D, Buffer1D, Buffer1D)> {
         if !self.full {
             return Err(PyValueError::new_err("Buffer not full"));
         }
 
         let total = self.num_steps * self.num_envs;
 
-        // Create numpy arrays from Rust vectors
-        let obs_array = self.observations.to_pyarray(py);
-        let obs_2d = obs_array.reshape([total, self.obs_dim])?;
+        let obs_buffer = Buffer2D::from_flat(
+            self.observations.clone(),
+            total,
+            self.obs_dim,
+        )?;
+        let actions_buffer = Buffer1D::from_vec(self.actions.clone());
+        let log_probs_buffer = Buffer1D::from_vec(self.log_probs.clone());
+        let advantages_buffer = Buffer1D::from_vec(self.advantages.clone());
+        let returns_buffer = Buffer1D::from_vec(self.returns.clone());
 
         Ok((
-            obs_2d,
-            self.actions.to_pyarray(py),
-            self.log_probs.to_pyarray(py),
-            self.advantages.to_pyarray(py),
-            self.returns.to_pyarray(py),
+            obs_buffer,
+            actions_buffer,
+            log_probs_buffer,
+            advantages_buffer,
+            returns_buffer,
         ))
     }
 
@@ -348,7 +347,6 @@ impl RolloutBuffer {
         for e in 0..self.num_envs {
             let idx = step_idx + e;
 
-            // Get next value and non-terminal mask
             let (next_value, next_non_terminal) = if t == self.num_steps - 1 {
                 (last_vals[e], 1.0 - self.dones[idx])
             } else {
@@ -356,10 +354,8 @@ impl RolloutBuffer {
                 (self.values[next_idx], 1.0 - self.dones[next_idx])
             };
 
-            // TD error
             let delta = self.rewards[idx] + gamma * next_value * next_non_terminal - self.values[idx];
 
-            // GAE
             last_gae[e] = delta + gamma * gae_lambda * next_non_terminal * last_gae[e];
             self.advantages[idx] = last_gae[e];
         }
@@ -387,15 +383,12 @@ impl RolloutBuffer {
         // Process chunks of 8 environments
         for chunk in (0..self.num_envs).step_by(LANES) {
             if chunk + LANES <= self.num_envs {
-                // SIMD path: process 8 environments in parallel
                 let idx = step_idx + chunk;
 
-                // Load current step data
                 let rewards_vec = f32x8::from_slice(&self.rewards[idx..]);
                 let values_vec = f32x8::from_slice(&self.values[idx..]);
                 let last_gae_vec = f32x8::from_slice(&last_gae[chunk..]);
 
-                // Get next values and non-terminal masks
                 let (next_value, next_non_terminal) = if t == self.num_steps - 1 {
                     let next_val = f32x8::from_slice(&last_vals[chunk..]);
                     let dones = f32x8::from_slice(&self.dones[idx..]);
@@ -409,17 +402,13 @@ impl RolloutBuffer {
                     (next_val, non_term)
                 };
 
-                // TD error: delta = r + gamma * V(s') * (1-done) - V(s)
                 let delta = rewards_vec + gamma_vec * next_value * next_non_terminal - values_vec;
 
-                // GAE: A = delta + gamma * lambda * (1-done) * A_prev
                 let new_gae = delta + gamma_vec * gae_lambda_vec * next_non_terminal * last_gae_vec;
 
-                // Store results
                 new_gae.copy_to_slice(&mut last_gae[chunk..]);
                 new_gae.copy_to_slice(&mut self.advantages[idx..]);
             } else {
-                // Scalar fallback for remainder
                 for e in chunk..self.num_envs {
                     let idx = step_idx + e;
 
@@ -447,7 +436,6 @@ impl RolloutBuffer {
         const LANES: usize = 8;
         let total = self.advantages.len();
 
-        // Process chunks of 8
         for i in (0..total).step_by(LANES) {
             if i + LANES <= total {
                 let adv = f32x8::from_slice(&self.advantages[i..]);
@@ -455,7 +443,6 @@ impl RolloutBuffer {
                 let ret = adv + val;
                 ret.copy_to_slice(&mut self.returns[i..]);
             } else {
-                // Scalar remainder
                 for j in i..total {
                     self.returns[j] = self.advantages[j] + self.values[j];
                 }
@@ -463,6 +450,3 @@ impl RolloutBuffer {
         }
     }
 }
-
-// NOTE: GAE computation is tested via Python integration tests in python/tests/test_rollout.py
-// Python tests provide better coverage as they test through the FFI boundary

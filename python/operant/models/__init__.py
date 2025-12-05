@@ -27,11 +27,12 @@ from .networks import (
     DiscreteActorCritic,
     PopArtValueHead,
 )
-from .ppo import PPO
+from .ppo import PPO, PPOConfig
 
 __all__ = [
     "Algorithm",
     "PPO",
+    "PPOConfig",
     "ActorCritic",
     "DiscreteActorCritic",
     "ContinuousActorCritic",

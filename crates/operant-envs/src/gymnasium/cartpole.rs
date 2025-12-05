@@ -17,14 +17,14 @@ const FORCE_MAG: f32 = 10.0;
 const DT: f32 = 0.02;
 const X_THRESHOLD: f32 = 2.4;
 const THETA_THRESHOLD: f32 = 12.0 * std::f32::consts::PI / 180.0;
-const MAX_STEPS: u32 = 500;  // Match CartPole-v1 (not v0 which uses 200)
+const MAX_STEPS: u32 = 500;
 
 use operant_core::LogData;
 use crate::shared::rng::*;
 use rand::SeedableRng;
 
 #[cfg(feature = "simd")]
-use std::simd::{f32x8, cmp::SimdPartialOrd};
+use std::simd::{f32x8, cmp::SimdPartialOrd, num::SimdFloat};
 #[cfg(feature = "simd")]
 use crate::shared::simd::*;
 
@@ -95,11 +95,16 @@ impl CartPole {
     /// * `max_steps` - Maximum episode length before truncation
     /// * `init_range` - Range for random initial state values
     /// * `workers` - Number of worker threads (1 = single-threaded, >1 = parallel)
-    pub fn new(num_envs: usize, max_steps: u32, init_range: f32, workers: usize) -> Self {
-        assert!(num_envs > 0, "num_envs must be at least 1");
+    pub fn new(num_envs: usize, max_steps: u32, init_range: f32, workers: usize) -> operant_core::Result<Self> {
+        if num_envs == 0 {
+            return Err(operant_core::OperantError::InvalidConfig {
+                param: "num_envs".to_string(),
+                message: "must be at least 1".to_string(),
+            });
+        }
         let workers = workers.max(1);
 
-        Self {
+        Ok(Self {
             x: vec![0.0; num_envs],
             x_dot: vec![0.0; num_envs],
             theta: vec![0.0; num_envs],
@@ -116,16 +121,16 @@ impl CartPole {
             rng_seeds: (0..num_envs as u64).collect(),
             log: CartPoleLog::default(),
             workers,
-        }
+        })
     }
 
     /// Create with default CartPole configuration (single-threaded).
-    pub fn with_defaults(num_envs: usize) -> Self {
+    pub fn with_defaults(num_envs: usize) -> operant_core::Result<Self> {
         Self::new(num_envs, MAX_STEPS, 0.05, 1)
     }
 
     /// Create with default CartPole configuration and specified worker count.
-    pub fn with_workers(num_envs: usize, workers: usize) -> Self {
+    pub fn with_workers(num_envs: usize, workers: usize) -> operant_core::Result<Self> {
         Self::new(num_envs, MAX_STEPS, 0.05, workers)
     }
 
@@ -175,9 +180,6 @@ impl CartPole {
         self.theta[idx] = random_uniform(&mut rng, -self.init_range, self.init_range);
         self.theta_dot[idx] = random_uniform(&mut rng, -self.init_range, self.init_range);
 
-        // Don't reset rewards/terminals/truncations here!
-        // The agent needs to read these values from the terminal step.
-        // They will be overwritten on the next step anyway.
         self.ticks[idx] = 0;
         self.episode_rewards[idx] = 0.0;
     }
@@ -211,8 +213,10 @@ impl CartPole {
 
         let temp = (force + pole_mass_length * theta_dot * theta_dot * sin_theta) / total_mass;
 
-        let theta_acc = (GRAVITY * sin_theta - cos_theta * temp)
-            / (POLE_LENGTH * (4.0 / 3.0 - POLE_MASS * cos_theta * cos_theta / total_mass));
+        // Prevent division by zero when cos_theta approximation error causes denom ≤ 0
+        let denom = POLE_LENGTH * (4.0 / 3.0 - POLE_MASS * cos_theta * cos_theta / total_mass);
+        let safe_denom = denom.max(1e-6);
+        let theta_acc = (GRAVITY * sin_theta - cos_theta * temp) / safe_denom;
 
         let x_acc = temp - pole_mass_length * theta_acc * cos_theta / total_mass;
 
@@ -298,8 +302,10 @@ impl CartPole {
 
         let temp = (force + pole_ml * theta_dot * theta_dot * sin_theta) / total_mass;
 
+        // Prevent division by zero when cos_theta approximation error causes denom ≤ 0
         let denom = pole_length * (four_thirds - pole_mass * cos_theta * cos_theta / total_mass);
-        let theta_acc = (gravity * sin_theta - cos_theta * temp) / denom;
+        let safe_denom = denom.simd_max(f32x8::splat(1e-6));
+        let theta_acc = (gravity * sin_theta - cos_theta * temp) / safe_denom;
 
         let x_acc = temp - pole_ml * theta_acc * cos_theta / total_mass;
 
@@ -322,9 +328,6 @@ impl CartPole {
         let terminal_mask = x_out | theta_out;
         let terminal_bits = terminal_mask.to_bitmask() as u8;
 
-        // PHASE 1 OPTIMIZATION: Vectorize post-SIMD loop
-
-        // 1. SIMD tick increment
         let ticks_vec = f32x8::from_array([
             self.ticks[base] as f32,
             self.ticks[base + 1] as f32,
@@ -337,26 +340,20 @@ impl CartPole {
         ]);
         let new_ticks = ticks_vec + f32x8::splat(1.0);
 
-        // Store back as u32
         for lane in 0..8 {
             self.ticks[base + lane] = new_ticks.to_array()[lane] as u32;
         }
 
-        // 2. SIMD truncation check
         let max_steps_vec = f32x8::splat(self.max_steps as f32);
         let truncation_mask = new_ticks.simd_ge(max_steps_vec);
         let truncation_bits = truncation_mask.to_bitmask() as u8;
 
-        // 3. SIMD reward computation (terminal = 0.0, not terminal = 1.0)
         let zero = f32x8::splat(0.0);
         let one = f32x8::splat(1.0);
         let reward_vec = terminal_mask.select(zero, one);
 
-        // Store rewards (SIMD copy)
         reward_vec.copy_to_slice(&mut self.rewards[base..base + 8]);
 
-        // Store terminals and truncations (bitmask to u8 array - optimized)
-        // Pre-computed bit extraction avoids loop-carried dependencies
         let terminal_bytes: [u8; 8] = [
             terminal_bits & 1,
             (terminal_bits >> 1) & 1,
@@ -380,12 +377,10 @@ impl CartPole {
         self.terminals[base..base + 8].copy_from_slice(&terminal_bytes);
         self.truncations[base..base + 8].copy_from_slice(&truncation_bytes);
 
-        // 4. SIMD episode reward accumulation
         let episode_rewards_vec = f32x8::from_slice(&self.episode_rewards[base..base + 8]);
         let new_episode_rewards = episode_rewards_vec + reward_vec;
         new_episode_rewards.copy_to_slice(&mut self.episode_rewards[base..base + 8]);
 
-        // 5. Batch log updates (accumulate per-chunk, write once)
         let mut chunk_total_reward = 0.0;
         let mut chunk_episode_count = 0;
         let mut chunk_total_steps = 0;
@@ -429,13 +424,10 @@ impl CartPole {
         let workers = self.workers;
         let max_steps = self.max_steps;
 
-        // Calculate chunk size, aligned to SIMD lanes (8) for efficiency
         let base_chunk_size = num_envs / workers;
         let chunk_size = (base_chunk_size / 8) * 8;
-        let chunk_size = chunk_size.max(8); // Minimum chunk size of 8
+        let chunk_size = chunk_size.max(8);
 
-        // Get raw pointers wrapped in SyncPtr for parallel mutable access
-        // SAFETY: Each worker operates on non-overlapping index ranges
         let x_ptr = unsafe { SyncPtr::new(self.x.as_mut_ptr()) };
         let x_dot_ptr = unsafe { SyncPtr::new(self.x_dot.as_mut_ptr()) };
         let theta_ptr = unsafe { SyncPtr::new(self.theta.as_mut_ptr()) };
@@ -446,7 +438,6 @@ impl CartPole {
         let ticks_ptr = unsafe { SyncPtr::new(self.ticks.as_mut_ptr()) };
         let episode_rewards_ptr = unsafe { SyncPtr::new(self.episode_rewards.as_mut_ptr()) };
 
-        // Process chunks in parallel, collect logs
         let chunk_logs: Vec<CartPoleLog> = (0..workers)
             .into_par_iter()
             .map(|worker_idx| {
@@ -464,7 +455,6 @@ impl CartPole {
                 let mut local_log = CartPoleLog::default();
 
                 for i in start..end {
-                    // SAFETY: Each worker has exclusive access to indices [start..end)
                     unsafe {
                         let action = *actions.get_unchecked(i);
                         let force = if action as i32 == 1 { FORCE_MAG } else { -FORCE_MAG };
@@ -527,7 +517,6 @@ impl CartPole {
             })
             .collect();
 
-        // Merge logs from all workers
         for log in chunk_logs {
             self.log.merge(&log);
         }
@@ -609,7 +598,6 @@ impl CartPole {
         }
     }
 
-    /// Scalar implementation of write_observations (fallback).
     #[cfg(not(feature = "simd"))]
     fn write_observations_scalar(&self, buffer: &mut [f32]) {
         for i in 0..self.num_envs {
@@ -621,10 +609,6 @@ impl CartPole {
         }
     }
 
-    /// SIMD-optimized write_observations using vectorized SoA→AoS transpose.
-    ///
-    /// Processes 8 environments at a time, loading 4 vectors (x, x_dot, theta, theta_dot)
-    /// and interleaving them into the output buffer.
     #[cfg(feature = "simd")]
     fn write_observations_simd(&self, buffer: &mut [f32]) {
         const LANES: usize = 8;
@@ -635,25 +619,20 @@ impl CartPole {
             let in_base = chunk * LANES;
             let out_base = chunk * LANES * OBS_DIM;
 
-            // Load 8 values from each state array
             let x_arr = &self.x[in_base..in_base + LANES];
             let x_dot_arr = &self.x_dot[in_base..in_base + LANES];
             let theta_arr = &self.theta[in_base..in_base + LANES];
             let theta_dot_arr = &self.theta_dot[in_base..in_base + LANES];
 
-            // Interleave into AoS format: [x0,xd0,t0,td0, x1,xd1,t1,td1, ...]
-            // Process 2 environments at a time for better cache utilization
             for pair in 0..4 {
                 let i = pair * 2;
                 let out_idx = out_base + pair * 8;
 
-                // Env i
                 buffer[out_idx] = x_arr[i];
                 buffer[out_idx + 1] = x_dot_arr[i];
                 buffer[out_idx + 2] = theta_arr[i];
                 buffer[out_idx + 3] = theta_dot_arr[i];
 
-                // Env i+1
                 buffer[out_idx + 4] = x_arr[i + 1];
                 buffer[out_idx + 5] = x_dot_arr[i + 1];
                 buffer[out_idx + 6] = theta_arr[i + 1];
@@ -661,7 +640,6 @@ impl CartPole {
             }
         }
 
-        // Handle remainder (envs not divisible by 8)
         let remainder_start = num_chunks * LANES;
         for i in remainder_start..self.num_envs {
             let base = i * OBS_DIM;
@@ -703,7 +681,7 @@ impl CartPole {
     }
 }
 
-impl operant_core::VecEnvironment for CartPole {
+impl operant_core::Environment for CartPole {
     #[inline]
     fn num_envs(&self) -> usize {
         self.num_envs
@@ -898,14 +876,11 @@ mod tests {
         let mut env = CartPole::with_defaults(1);
         env.reset(0);
 
-        // Force cart way out of bounds
-        env.x[0] = 10.0;  // Far beyond x_threshold of 2.4
+        env.x[0] = 10.0;
 
         let actions = vec![0.0];
         env.step_auto_reset(&actions);
 
-        // Should be terminal (will auto-reset internally)
-        // Check that a reset happened by verifying state is back in bounds
         assert!(env.x[0].abs() < 1.0, "Should have reset after terminal");
     }
 
@@ -914,14 +889,12 @@ mod tests {
         let mut env = CartPole::with_defaults(32);
         env.reset(0);
 
-        // Run some steps
         let actions: Vec<f32> = vec![0.0; 32];
         for _ in 0..100 {
             env.step_auto_reset(&actions);
         }
 
         let log = env.get_log();
-        // Should have completed at least some episodes
         assert!(log.episode_count > 0, "Should complete some episodes");
         assert!(log.total_reward > 0.0, "Should accumulate some reward");
         assert!(log.total_steps > 0, "Should count steps");
@@ -932,17 +905,14 @@ mod tests {
         let mut env = CartPole::with_defaults(16);
         env.reset(0);
 
-        // Run steps and accumulate log data
         let actions = vec![0.0; 16];
         for _ in 0..50 {
             env.step_auto_reset(&actions);
         }
 
-        // Verify log has data
         let log_before = env.get_log();
         assert!(log_before.episode_count > 0);
 
-        // Clear and verify
         env.clear_log();
         let log_after = env.get_log();
         assert_eq!(log_after.episode_count, 0);
@@ -958,7 +928,6 @@ mod tests {
         let mut buffer = vec![0.0f32; 8 * 4];
         env.write_observations(&mut buffer);
 
-        // Verify buffer contains valid observations
         for i in 0..8 {
             let base = i * 4;
             assert_eq!(buffer[base], env.x[i]);
@@ -983,7 +952,6 @@ mod tests {
         env1.step_auto_reset(&left);
         env2.step_auto_reset(&right);
 
-        // Different actions should produce different states
         assert_ne!(env1.x_dot[0], env2.x_dot[0], "Different actions should change velocity");
     }
 
@@ -995,7 +963,6 @@ mod tests {
         let actions = vec![0.0; 64];
         env.step_auto_reset(&actions);
 
-        // Check that all arrays have correct length
         assert_eq!(env.x.len(), 64);
         assert_eq!(env.rewards.len(), 64);
         assert_eq!(env.terminals.len(), 64);

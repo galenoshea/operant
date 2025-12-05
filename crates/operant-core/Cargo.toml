@@ -11,8 +11,12 @@ categories.workspace = true
 description = "Core traits and vectorization for Operant RL library"
 readme = "../../README.md"
 
+[features]
+pyo3 = ["dep:pyo3"]
+
 [dependencies]
 rand = { workspace = true }
 rand_xoshiro = { workspace = true }
+pyo3 = { workspace = true, optional = true }
 
 [dev-dependencies]

@@ -90,11 +90,16 @@ impl MountainCar {
     /// * `max_steps` - Maximum episode length before truncation
     /// * `init_range` - Range for random initial position values
     /// * `workers` - Number of worker threads (1 = single-threaded, >1 = parallel)
-    pub fn new(num_envs: usize, max_steps: u32, init_range: f32, workers: usize) -> Self {
-        assert!(num_envs > 0, "num_envs must be at least 1");
+    pub fn new(num_envs: usize, max_steps: u32, init_range: f32, workers: usize) -> operant_core::Result<Self> {
+        if num_envs == 0 {
+            return Err(operant_core::OperantError::InvalidConfig {
+                param: "num_envs".to_string(),
+                message: "must be at least 1".to_string(),
+            });
+        }
         let workers = workers.max(1);
 
-        Self {
+        Ok(Self {
             position: vec![0.0; num_envs],
             velocity: vec![0.0; num_envs],
             rewards: vec![0.0; num_envs],
@@ -109,16 +114,16 @@ impl MountainCar {
             rng_seeds: (0..num_envs as u64).collect(),
             log: MountainCarLog::default(),
             workers,
-        }
+        })
     }
 
     /// Create with default parameters (200 max steps, 0.6 init range, single-threaded).
-    pub fn with_defaults(num_envs: usize) -> Self {
+    pub fn with_defaults(num_envs: usize) -> operant_core::Result<Self> {
         Self::new(num_envs, MAX_STEPS, 0.6, 1)
     }
 
     /// Create with default parameters and specified worker count.
-    pub fn with_workers(num_envs: usize, workers: usize) -> Self {
+    pub fn with_workers(num_envs: usize, workers: usize) -> operant_core::Result<Self> {
         Self::new(num_envs, MAX_STEPS, 0.6, workers)
     }
 
@@ -209,9 +214,6 @@ impl MountainCar {
         position.copy_to_slice(&mut self.position[start_idx..start_idx + 8]);
         velocity.copy_to_slice(&mut self.velocity[start_idx..start_idx + 8]);
 
-        // PHASE 1 OPTIMIZATION: Vectorize post-SIMD loop
-
-        // 1. SIMD tick increment
         let ticks_vec = f32x8::from_array([
             self.ticks[start_idx] as f32,
             self.ticks[start_idx + 1] as f32,
@@ -224,22 +226,18 @@ impl MountainCar {
         ]);
         let new_ticks = ticks_vec + f32x8::splat(1.0);
 
-        // Store back as u32
         for lane in 0..8 {
             self.ticks[start_idx + lane] = new_ticks.to_array()[lane] as u32;
         }
 
-        // 2. SIMD truncation check
         let max_steps_vec = f32x8::splat(self.max_steps as f32);
         let truncation_mask = new_ticks.simd_ge(max_steps_vec);
         let truncation_bits = truncation_mask.to_bitmask() as u8;
 
-        // 3. Terminal detection (reuse from physics)
         let goal_threshold = f32x8::splat(GOAL_POSITION);
         let terminal_mask = position.simd_ge(goal_threshold);
         let terminal_bits = terminal_mask.to_bitmask() as u8;
 
-        // Store terminal and truncation flags (optimized bitmask extraction)
         let terminal_bytes: [u8; 8] = [
             terminal_bits & 1,
             (terminal_bits >> 1) & 1,
@@ -263,16 +261,13 @@ impl MountainCar {
         self.terminals[start_idx..start_idx + 8].copy_from_slice(&terminal_bytes);
         self.truncations[start_idx..start_idx + 8].copy_from_slice(&truncation_bytes);
 
-        // 4. SIMD reward computation (constant -1.0 for MountainCar)
         let reward_vec = f32x8::splat(-1.0);
         reward_vec.copy_to_slice(&mut self.rewards[start_idx..start_idx + 8]);
 
-        // 5. SIMD episode reward accumulation
         let episode_rewards_vec = f32x8::from_slice(&self.episode_rewards[start_idx..start_idx + 8]);
         let new_episode_rewards = episode_rewards_vec + reward_vec;
         new_episode_rewards.copy_to_slice(&mut self.episode_rewards[start_idx..start_idx + 8]);
 
-        // 6. Batch log updates (outside inner loop)
         let mut chunk_total_reward = 0.0;
         let mut chunk_episode_count = 0;
         let mut chunk_total_steps = 0;
@@ -339,7 +334,6 @@ impl MountainCar {
         let chunk_size = (base_chunk_size / 8) * 8;
         let chunk_size = chunk_size.max(8);
 
-        // SAFETY: Each worker operates on non-overlapping index ranges
         let position_ptr = unsafe { SyncPtr::new(self.position.as_mut_ptr()) };
         let velocity_ptr = unsafe { SyncPtr::new(self.velocity.as_mut_ptr()) };
         let rewards_ptr = unsafe { SyncPtr::new(self.rewards.as_mut_ptr()) };
@@ -477,23 +471,18 @@ impl MountainCar {
             let pos_arr = &self.position[in_base..in_base + LANES];
             let vel_arr = &self.velocity[in_base..in_base + LANES];
 
-            // Interleave to AoS format: [pos0, vel0, pos1, vel1, ...]
-            // Process in pairs for cache efficiency
             for pair in 0..4 {
                 let i = pair * 2;
                 let out_idx = out_base + pair * 4;
 
-                // First env of pair
                 buffer[out_idx] = pos_arr[i];
                 buffer[out_idx + 1] = vel_arr[i];
 
-                // Second env of pair
                 buffer[out_idx + 2] = pos_arr[i + 1];
                 buffer[out_idx + 3] = vel_arr[i + 1];
             }
         }
 
-        // Handle remainder (environments not divisible by 8)
         let remainder_start = num_chunks * LANES;
         for i in remainder_start..self.num_envs {
             let base = i * OBS_DIM;
@@ -540,7 +529,7 @@ impl MountainCar {
     }
 }
 
-impl operant_core::VecEnvironment for MountainCar {
+impl operant_core::Environment for MountainCar {
     fn num_envs(&self) -> usize {
         self.num_envs
     }
@@ -558,6 +547,8 @@ impl operant_core::VecEnvironment for MountainCar {
         for i in 0..self.num_envs {
             self.rng_seeds[i] = seed.wrapping_add(i as u64);
             self.reset_single_env(i);
+            // Clear step outputs after reset (fix for NaN bug)
+            self.rewards[i] = 0.0;
         }
     }
 
@@ -585,7 +576,7 @@ impl operant_core::VecEnvironment for MountainCar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use operant_core::VecEnvironment;
+    use operant_core::Environment;
 
     #[test]
     fn test_creation() {
@@ -734,11 +725,9 @@ mod tests {
         let mut env = MountainCar::with_defaults(3);
         env.reset(42);
 
-        // Test all three action types
-        let actions = vec![0.0, 1.0, 2.0];  // Left, None, Right
+        let actions = vec![0.0, 1.0, 2.0];
         env.step_auto_reset(&actions);
 
-        // All should execute without errors
         assert_eq!(env.position.len(), 3);
         assert_eq!(env.velocity.len(), 3);
     }
@@ -748,15 +737,12 @@ mod tests {
         let mut env = MountainCar::with_defaults(32);
         env.reset(0);
 
-        // Run some steps
-        let actions: Vec<f32> = vec![2.0; 32];  // Always push right
+        let actions: Vec<f32> = vec![2.0; 32];
         for _ in 0..200 {
             env.step_auto_reset(&actions);
         }
 
         let log = env.get_log();
-        // MountainCar is hard, but should complete some episodes with enough steps
-        // Just check that log is functional
         assert!(log.total_steps > 0, "Should count steps");
     }
 
@@ -782,7 +768,6 @@ mod tests {
         let mut env = MountainCar::with_defaults(16);
         env.reset(42);
 
-        // Run steps and ensure velocity stays within bounds
         let actions = vec![2.0; 16];
         for _ in 0..100 {
             env.step_auto_reset(&actions);
@@ -802,7 +787,6 @@ mod tests {
         let mut buffer = vec![0.0f32; 8 * 2];
         env.write_observations(&mut buffer);
 
-        // Verify buffer contains valid observations
         for i in 0..8 {
             let base = i * 2;
             assert_eq!(buffer[base], env.position[i]);
@@ -815,13 +799,11 @@ mod tests {
         let mut env = MountainCar::with_defaults(16);
         env.reset(0);
 
-        // Run steps and accumulate log data
         let actions = vec![2.0; 16];
         for _ in 0..50 {
             env.step_auto_reset(&actions);
         }
 
-        // Clear and verify
         env.clear_log();
         let log = env.get_log();
         assert_eq!(log.episode_count, 0);
@@ -837,7 +819,6 @@ mod tests {
         let actions = vec![1.0; 64];
         env.step_auto_reset(&actions);
 
-        // Check that all arrays have correct length
         assert_eq!(env.position.len(), 64);
         assert_eq!(env.velocity.len(), 64);
         assert_eq!(env.rewards.len(), 64);

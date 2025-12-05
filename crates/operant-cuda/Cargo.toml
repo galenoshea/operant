@@ -1,0 +1,26 @@
+[package]
+name = "operant-cuda"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "GPU-accelerated RL environments for Operant using CUDA"
+
+[dependencies]
+operant-core = { workspace = true }
+cudarc = { version = "0.12", features = ["cuda-12050", "driver"] }
+rand = { workspace = true }
+rand_xoshiro = { workspace = true }
+
+[build-dependencies]
+# For compiling CUDA kernels at build time
+cc = "1.0"
+
+[features]
+default = []
+# Enable f16 support for tensor cores (future optimization)
+f16 = []

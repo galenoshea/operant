@@ -219,17 +219,14 @@ impl RunningNormalizer {
             for i in 0..self.dim {
                 let x = input[offset + i];
 
-                // Compute variance
                 let var = if self.count > 1 {
                     self.m2[i] / (self.count - 1) as f32
                 } else {
                     1.0
                 };
 
-                // Normalize: (x - mean) / sqrt(var + eps)
                 let mut normalized = (x - self.mean[i]) / (var + self.eps).sqrt();
 
-                // Optional clipping
                 if self.clip_range > 0.0 {
                     normalized = normalized.clamp(-self.clip_range, self.clip_range);
                 }
@@ -254,37 +251,30 @@ impl RunningNormalizer {
         for batch_idx in 0..batch_size {
             let offset = batch_idx * self.dim;
 
-            // SIMD processing for chunks of 8
             for chunk_idx in 0..simd_chunks {
                 let base_idx = offset + chunk_idx * 8;
 
-                // Load 8 values
                 let x = f32x8::from_slice(&input[base_idx..]);
                 let mean = f32x8::from_slice(&self.mean[chunk_idx * 8..]);
                 let m2 = f32x8::from_slice(&self.m2[chunk_idx * 8..]);
 
-                // Compute variance
                 let var = if self.count > 1 {
                     m2 / f32x8::splat((self.count - 1) as f32)
                 } else {
                     f32x8::splat(1.0)
                 };
 
-                // Normalize: (x - mean) / sqrt(var + eps)
                 let mut normalized = (x - mean) / (var + f32x8::splat(self.eps)).sqrt();
 
-                // Optional clipping
                 if self.clip_range > 0.0 {
                     let clip_min = f32x8::splat(-self.clip_range);
                     let clip_max = f32x8::splat(self.clip_range);
                     normalized = normalized.simd_clamp(clip_min, clip_max);
                 }
 
-                // Store result
                 normalized.copy_to_slice(&mut output[base_idx..]);
             }
 
-            // Handle remainder with scalar code
             for i in (simd_chunks * 8)..self.dim {
                 let x = input[offset + i];
                 let var = if self.count > 1 {
@@ -317,7 +307,6 @@ mod tests {
         Python::with_gil(|py| {
             let mut normalizer = RunningNormalizer::new(2, 0.0, 1e-8).unwrap();
 
-            // Add samples: [1.0, 2.0], [3.0, 4.0], [5.0, 6.0]
             let data1 = vec![1.0f32, 2.0].to_pyarray(py);
             let data2 = vec![3.0f32, 4.0].to_pyarray(py);
             let data3 = vec![5.0f32, 6.0].to_pyarray(py);
@@ -326,13 +315,11 @@ mod tests {
             normalizer.update(&data2).unwrap();
             normalizer.update(&data3).unwrap();
 
-            // Expected mean: [3.0, 4.0]
             let mean = normalizer.get_mean(py);
             let mean_slice = unsafe { mean.as_slice().unwrap() };
             assert!((mean_slice[0] - 3.0).abs() < 1e-5);
             assert!((mean_slice[1] - 4.0).abs() < 1e-5);
 
-            // Expected std: [2.0, 2.0] (variance = 4.0)
             let std = normalizer.get_std(py);
             let std_slice = unsafe { std.as_slice().unwrap() };
             assert!((std_slice[0] - 2.0).abs() < 1e-5);
@@ -347,16 +334,13 @@ mod tests {
         Python::with_gil(|py| {
             let mut normalizer = RunningNormalizer::new(2, 0.0, 1e-8).unwrap();
 
-            // Update with mean [0.0, 0.0], std [1.0, 1.0]
             let data = vec![-1.0f32, -1.0, 0.0, 0.0, 1.0, 1.0].to_pyarray(py);
             normalizer.update(&data).unwrap();
 
-            // Normalize [1.0, 1.0] should give ~[1.0, 1.0]
             let test_data = vec![1.0f32, 1.0].to_pyarray(py);
             let normalized = normalizer.normalize(py, &test_data).unwrap();
             let normalized_slice = unsafe { normalized.as_slice().unwrap() };
 
-            // Should be close to 1.0 (1 std above mean)
             assert!((normalized_slice[0] - 1.0).abs() < 0.2);
             assert!((normalized_slice[1] - 1.0).abs() < 0.2);
         });
@@ -369,16 +353,13 @@ mod tests {
         Python::with_gil(|py| {
             let mut normalizer = RunningNormalizer::new(1, 2.0, 1e-8).unwrap();
 
-            // Set up stats with mean=0, std=1
             let data = vec![-1.0f32, 0.0, 1.0].to_pyarray(py);
             normalizer.update(&data).unwrap();
 
-            // Test extreme value (should be clipped to ±2.0)
             let test_data = vec![10.0f32].to_pyarray(py);
             let normalized = normalizer.normalize(py, &test_data).unwrap();
             let normalized_slice = unsafe { normalized.as_slice().unwrap() };
 
-            // Should be clipped to 2.0
             assert!(normalized_slice[0] <= 2.0);
             assert!(normalized_slice[0] >= -2.0);
         });

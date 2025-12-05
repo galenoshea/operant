@@ -17,25 +17,31 @@ pub fn simd_abs(v: f32x8) -> f32x8 {
 ///
 /// Accurate for angles in [-π, π]. Uses truncated Taylor series:
 /// cos(x) ≈ 1 - x²/2! + x⁴/4!
+///
+/// Clamped to [-1, 1] to prevent approximation errors from causing NaN propagation.
 #[cfg(feature = "simd")]
 #[inline(always)]
 pub fn simd_cos(x: f32x8) -> f32x8 {
     let x2 = x * x;
     let x4 = x2 * x2;
-    f32x8::splat(1.0) - x2 * f32x8::splat(0.5) + x4 * f32x8::splat(1.0 / 24.0)
+    let result = f32x8::splat(1.0) - x2 * f32x8::splat(0.5) + x4 * f32x8::splat(1.0 / 24.0);
+    result.simd_clamp(f32x8::splat(-1.0), f32x8::splat(1.0))
 }
 
 /// Fast sine approximation using Taylor series (order 5).
 ///
 /// Accurate for angles in [-π, π]. Uses truncated Taylor series:
 /// sin(x) ≈ x - x³/3! + x⁵/5!
+///
+/// Clamped to [-1, 1] to prevent approximation errors from causing NaN propagation.
 #[cfg(feature = "simd")]
 #[inline(always)]
 pub fn simd_sin(x: f32x8) -> f32x8 {
     let x2 = x * x;
     let x3 = x2 * x;
     let x5 = x3 * x2;
-    x - x3 * f32x8::splat(1.0 / 6.0) + x5 * f32x8::splat(1.0 / 120.0)
+    let result = x - x3 * f32x8::splat(1.0 / 6.0) + x5 * f32x8::splat(1.0 / 120.0);
+    result.simd_clamp(f32x8::splat(-1.0), f32x8::splat(1.0))
 }
 
 #[cfg(all(test, feature = "simd"))]

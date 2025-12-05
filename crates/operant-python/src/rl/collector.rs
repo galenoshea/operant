@@ -92,7 +92,6 @@ impl BatchedRolloutBuffer {
         let env_offset = step * self.num_envs;
         let obs_offset = step * self.num_envs * self.obs_dim;
 
-        // Copy all data in one go
         unsafe {
             let obs = observations.as_slice()?;
             self.observations[obs_offset..obs_offset + obs.len()].copy_from_slice(obs);
@@ -126,7 +125,6 @@ impl BatchedRolloutBuffer {
     ) -> PyResult<()> {
         let last_vals = unsafe { last_values.as_slice()? };
 
-        // SIMD-friendly GAE computation
         let mut last_gae = vec![0.0f32; self.num_envs];
 
         for t in (0..self.num_steps).rev() {
@@ -148,7 +146,6 @@ impl BatchedRolloutBuffer {
             }
         }
 
-        // Returns = advantages + values
         for i in 0..self.advantages.len() {
             self.returns[i] = self.advantages[i] + self.values[i];
         }

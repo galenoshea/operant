@@ -1,7 +1,0 @@
-- you should be able to pass a policy, or actor, critic into a PPO model and in futre other models if you want to customize our implementation. (otherwise all hyperparams are default)
-- we want the logger which plots the models performance over time using ratatui
-- we want a custom env as a template so users can build in their own enviornments using our framework
-- we want to use cuda kernals where possible to accelerate things further.
-- maybe off policy models could both produce data and train async?
-- maybe a operant-cli package for running things efficently? 
-- update the readme and have docs to cover all the features
